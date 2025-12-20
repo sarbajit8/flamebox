@@ -31,7 +31,9 @@ export const createLead = createAsyncThunk(
   "leads/createLead",
   async (leadData, { rejectWithValue }) => {
     try {
-      const response = await axios.post(`${API_URL}/create`, leadData);
+      const response = await axios.post(`${API_URL}/create`, leadData, {
+        withCredentials: true,
+      });
       return response.data;
     } catch (error) {
       return rejectWithValue(error.response?.data || { error: error.message });
@@ -45,7 +47,9 @@ export const fetchAllLeads = createAsyncThunk(
   async (filters = {}, { rejectWithValue }) => {
     try {
       const queryParams = new URLSearchParams(filters).toString();
-      const response = await axios.get(`${API_URL}?${queryParams}`);
+      const response = await axios.get(`${API_URL}?${queryParams}`, {
+        withCredentials: true,
+      });
       return response.data;
     } catch (error) {
       return rejectWithValue(error.response?.data || { error: error.message });
@@ -58,7 +62,9 @@ export const fetchLeadById = createAsyncThunk(
   "leads/fetchLeadById",
   async (id, { rejectWithValue }) => {
     try {
-      const response = await axios.get(`${API_URL}/${id}`);
+      const response = await axios.get(`${API_URL}/${id}`, {
+        withCredentials: true,
+      });
       return response.data;
     } catch (error) {
       return rejectWithValue(error.response?.data || { error: error.message });
@@ -71,7 +77,9 @@ export const updateLead = createAsyncThunk(
   "leads/updateLead",
   async ({ id, updateData }, { rejectWithValue }) => {
     try {
-      const response = await axios.put(`${API_URL}/${id}`, updateData);
+      const response = await axios.put(`${API_URL}/${id}`, updateData, {
+        withCredentials: true,
+      });
       return response.data;
     } catch (error) {
       return rejectWithValue(error.response?.data || { error: error.message });
@@ -84,7 +92,9 @@ export const deleteLead = createAsyncThunk(
   "leads/deleteLead",
   async (id, { rejectWithValue }) => {
     try {
-      const response = await axios.delete(`${API_URL}/${id}`);
+      const response = await axios.delete(`${API_URL}/${id}`, {
+        withCredentials: true,
+      });
       return { ...response.data, id };
     } catch (error) {
       return rejectWithValue(error.response?.data || { error: error.message });
@@ -97,10 +107,11 @@ export const updateLeadStatus = createAsyncThunk(
   "leads/updateLeadStatus",
   async ({ id, status, notes }, { rejectWithValue }) => {
     try {
-      const response = await axios.patch(`${API_URL}/${id}/status`, {
-        status,
-        notes,
-      });
+      const response = await axios.patch(
+        `${API_URL}/${id}/status`,
+        { status, notes },
+        { withCredentials: true }
+      );
       return response.data;
     } catch (error) {
       return rejectWithValue(error.response?.data || { error: error.message });
@@ -115,7 +126,8 @@ export const addFollowUp = createAsyncThunk(
     try {
       const response = await axios.post(
         `${API_URL}/${id}/follow-up`,
-        followUpData
+        followUpData,
+        { withCredentials: true }
       );
       return response.data;
     } catch (error) {
@@ -129,10 +141,11 @@ export const assignLead = createAsyncThunk(
   "leads/assignLead",
   async ({ id, employeeId, employeeName }, { rejectWithValue }) => {
     try {
-      const response = await axios.patch(`${API_URL}/${id}/assign`, {
-        employeeId,
-        employeeName,
-      });
+      const response = await axios.patch(
+        `${API_URL}/${id}/assign`,
+        { employeeId, employeeName },
+        { withCredentials: true }
+      );
       return response.data;
     } catch (error) {
       return rejectWithValue(error.response?.data || { error: error.message });
@@ -145,9 +158,11 @@ export const scheduleDemo = createAsyncThunk(
   "leads/scheduleDemo",
   async ({ id, demoDate }, { rejectWithValue }) => {
     try {
-      const response = await axios.post(`${API_URL}/${id}/schedule-demo`, {
-        demoDate,
-      });
+      const response = await axios.post(
+        `${API_URL}/${id}/schedule-demo`,
+        { demoDate },
+        { withCredentials: true }
+      );
       return response.data;
     } catch (error) {
       return rejectWithValue(error.response?.data || { error: error.message });
@@ -160,10 +175,11 @@ export const convertLeadToMember = createAsyncThunk(
   "leads/convertLeadToMember",
   async ({ id, memberId, conversionNotes }, { rejectWithValue }) => {
     try {
-      const response = await axios.post(`${API_URL}/${id}/convert`, {
-        memberId,
-        conversionNotes,
-      });
+      const response = await axios.post(
+        `${API_URL}/${id}/convert`,
+        { memberId, conversionNotes },
+        { withCredentials: true }
+      );
       return response.data;
     } catch (error) {
       return rejectWithValue(error.response?.data || { error: error.message });
@@ -176,7 +192,9 @@ export const fetchLeadStatistics = createAsyncThunk(
   "leads/fetchLeadStatistics",
   async (_, { rejectWithValue }) => {
     try {
-      const response = await axios.get(`${API_URL}/analytics/statistics`);
+      const response = await axios.get(`${API_URL}/analytics/statistics`, {
+        withCredentials: true,
+      });
       return response.data;
     } catch (error) {
       return rejectWithValue(error.response?.data || { error: error.message });
@@ -189,7 +207,9 @@ export const fetchHotLeads = createAsyncThunk(
   "leads/fetchHotLeads",
   async (_, { rejectWithValue }) => {
     try {
-      const response = await axios.get(`${API_URL}/filter/hot-leads`);
+      const response = await axios.get(`${API_URL}/filter/hot-leads`, {
+        withCredentials: true,
+      });
       return response.data;
     } catch (error) {
       return rejectWithValue(error.response?.data || { error: error.message });

@@ -18,7 +18,10 @@ const leadSchema = new mongoose.Schema(
       required: [true, "Email is required"],
       lowercase: true,
       trim: true,
-      match: [/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/, "Please provide a valid email"],
+      match: [
+        /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/,
+        "Please provide a valid email",
+      ],
     },
     phoneNumber: {
       type: String,
@@ -67,7 +70,7 @@ const leadSchema = new mongoose.Schema(
         "Events",
         "Flyer",
         "Billboard",
-        "Other"
+        "Other",
       ],
       required: [true, "Lead source is required"],
       default: "Walk-in",
@@ -124,7 +127,7 @@ const leadSchema = new mongoose.Schema(
         "$1000-$1500",
         "$1500-$2000",
         "$2000+",
-        "Not Disclosed"
+        "Not Disclosed",
       ],
       default: "Not Disclosed",
     },
@@ -139,16 +142,16 @@ const leadSchema = new mongoose.Schema(
     leadStatus: {
       type: String,
       enum: [
-        "New",           // Just added
-        "Contacted",     // Initial contact made
-        "Qualified",     // Interested and qualified
-        "Hot",           // Very interested, ready to join
-        "Warm",          // Interested but needs follow-up
-        "Cold",          // Not interested currently
-        "Converted",     // Successfully converted to member
-        "Lost",          // Lead lost to competitor or not interested
-        "Unresponsive",  // Not responding to follow-ups
-        "Follow-up"      // Scheduled for follow-up
+        "New", // Just added
+        "Contacted", // Initial contact made
+        "Qualified", // Interested and qualified
+        "Hot", // Very interested, ready to join
+        "Warm", // Interested but needs follow-up
+        "Cold", // Not interested currently
+        "Converted", // Successfully converted to member
+        "Lost", // Lead lost to competitor or not interested
+        "Unresponsive", // Not responding to follow-ups
+        "Follow-up", // Scheduled for follow-up
       ],
       default: "New",
       required: true,
@@ -176,7 +179,14 @@ const leadSchema = new mongoose.Schema(
         },
         method: {
           type: String,
-          enum: ["Phone", "Email", "WhatsApp", "SMS", "In-Person", "Video Call"],
+          enum: [
+            "Phone",
+            "Email",
+            "WhatsApp",
+            "SMS",
+            "In-Person",
+            "Video Call",
+          ],
           required: true,
         },
         notes: {
@@ -185,7 +195,14 @@ const leadSchema = new mongoose.Schema(
         },
         outcome: {
           type: String,
-          enum: ["Interested", "Not Interested", "Callback", "Converted", "No Response", "Rescheduled"],
+          enum: [
+            "Interested",
+            "Not Interested",
+            "Callback",
+            "Converted",
+            "No Response",
+            "Rescheduled",
+          ],
           default: "No Response",
         },
         nextFollowUpDate: {
@@ -262,7 +279,7 @@ const leadSchema = new mongoose.Schema(
       currentPrice: { type: Number, default: 0 },
       switchingReason: { type: String, default: "" },
     },
-    
+
     // ============================================
     // DEMO & TRIAL
     // ============================================
@@ -399,7 +416,7 @@ leadSchema.virtual("daysUntilFollowUp").get(function () {
 // ============================================
 // PRE-SAVE MIDDLEWARE
 // ============================================
-leadSchema.pre("save", function (next) {
+leadSchema.pre("save", function () {
   // Update lastUpdatedDate
   this.lastUpdatedDate = new Date();
 
@@ -414,10 +431,13 @@ leadSchema.pre("save", function (next) {
 
   // Auto-calculate lead score based on various factors
   let score = 0;
-  
+
   // Source scoring
   if (this.leadSource === "Referral") score += 30;
-  else if (["Walk-in", "Website", "Instagram", "Facebook"].includes(this.leadSource)) score += 20;
+  else if (
+    ["Walk-in", "Website", "Instagram", "Facebook"].includes(this.leadSource)
+  )
+    score += 20;
   else score += 10;
 
   // Status scoring
@@ -442,8 +462,6 @@ leadSchema.pre("save", function (next) {
   else if (this.demoScheduled) score += 10;
 
   this.leadScore = Math.min(score, 100); // Cap at 100
-
-  next();
 });
 
 // ============================================
@@ -453,13 +471,13 @@ leadSchema.pre("save", function (next) {
 // Add follow-up
 leadSchema.methods.addFollowUp = async function (followUpData) {
   this.followUps.push(followUpData);
-  
+
   if (followUpData.nextFollowUpDate) {
     this.nextFollowUpDate = followUpData.nextFollowUpDate;
   }
-  
+
   this.lastContactedDate = new Date();
-  
+
   await this.save();
   return this;
 };
@@ -470,7 +488,7 @@ leadSchema.methods.convertToMember = async function (memberId) {
   this.convertedToMemberId = memberId;
   this.conversionDate = new Date();
   this.leadStatus = "Converted";
-  
+
   await this.save();
   return this;
 };
@@ -479,7 +497,7 @@ leadSchema.methods.convertToMember = async function (memberId) {
 leadSchema.methods.updateStatus = async function (status) {
   this.leadStatus = status;
   this.lastUpdatedDate = new Date();
-  
+
   await this.save();
   return this;
 };
@@ -489,7 +507,7 @@ leadSchema.methods.assignTo = async function (employeeId, employeeName) {
   this.assignedTo = employeeId;
   this.assignedToName = employeeName;
   this.assignedDate = new Date();
-  
+
   await this.save();
   return this;
 };
@@ -498,7 +516,7 @@ leadSchema.methods.assignTo = async function (employeeId, employeeName) {
 leadSchema.methods.scheduleDemo = async function (demoDate) {
   this.demoScheduled = true;
   this.demoDate = demoDate;
-  
+
   await this.save();
   return this;
 };
@@ -509,10 +527,10 @@ leadSchema.methods.scheduleDemo = async function (demoDate) {
 
 // Get hot leads
 leadSchema.statics.getHotLeads = function () {
-  return this.find({ 
-    leadStatus: "Hot", 
+  return this.find({
+    leadStatus: "Hot",
     isDeleted: false,
-    isConverted: false 
+    isConverted: false,
   }).sort({ leadScore: -1 });
 };
 
@@ -553,14 +571,14 @@ leadSchema.statics.getLeadsBySource = function (source) {
 // Get converted leads
 leadSchema.statics.getConvertedLeads = function (startDate, endDate) {
   const query = { isConverted: true, isDeleted: false };
-  
+
   if (startDate && endDate) {
     query.conversionDate = {
       $gte: new Date(startDate),
       $lte: new Date(endDate),
     };
   }
-  
+
   return this.find(query);
 };
 
@@ -571,23 +589,39 @@ leadSchema.statics.getLeadsByStatus = function (status) {
 
 // Get unassigned leads
 leadSchema.statics.getUnassignedLeads = function () {
-  return this.find({ 
-    assignedTo: null, 
+  return this.find({
+    assignedTo: null,
     isDeleted: false,
-    isConverted: false 
+    isConverted: false,
   }).sort({ addedDate: -1 });
 };
 
 // Get lead statistics
 leadSchema.statics.getStatistics = async function () {
   const totalLeads = await this.countDocuments({ isDeleted: false });
-  const convertedLeads = await this.countDocuments({ isConverted: true, isDeleted: false });
-  const hotLeads = await this.countDocuments({ leadStatus: "Hot", isDeleted: false });
-  const warmLeads = await this.countDocuments({ leadStatus: "Warm", isDeleted: false });
-  const coldLeads = await this.countDocuments({ leadStatus: "Cold", isDeleted: false });
-  const newLeads = await this.countDocuments({ leadStatus: "New", isDeleted: false });
-  
-  const conversionRate = totalLeads > 0 ? ((convertedLeads / totalLeads) * 100).toFixed(2) : 0;
+  const convertedLeads = await this.countDocuments({
+    isConverted: true,
+    isDeleted: false,
+  });
+  const hotLeads = await this.countDocuments({
+    leadStatus: "Hot",
+    isDeleted: false,
+  });
+  const warmLeads = await this.countDocuments({
+    leadStatus: "Warm",
+    isDeleted: false,
+  });
+  const coldLeads = await this.countDocuments({
+    leadStatus: "Cold",
+    isDeleted: false,
+  });
+  const newLeads = await this.countDocuments({
+    leadStatus: "New",
+    isDeleted: false,
+  });
+
+  const conversionRate =
+    totalLeads > 0 ? ((convertedLeads / totalLeads) * 100).toFixed(2) : 0;
 
   return {
     totalLeads,
