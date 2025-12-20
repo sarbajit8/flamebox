@@ -20,7 +20,6 @@ const createPackage = async (req, res) => {
       freezable,
       sessions,
       sessionCount,
-      maxMembers,
       features,
       amenities,
       status,
@@ -31,8 +30,15 @@ const createPackage = async (req, res) => {
       displayOrder,
     } = req.body;
 
-    // Calculate savings
-    const savings = originalPrice - discountedPrice;
+    // Calculate savings based on discount type
+    let savings;
+    if (discountType === "percentage") {
+      // discountedPrice contains percentage value
+      savings = (originalPrice * discountedPrice) / 100;
+    } else {
+      // discountType is "flat" - discountedPrice is the final price
+      savings = originalPrice - discountedPrice;
+    }
 
     // Create package object
     const packageData = {
@@ -48,7 +54,6 @@ const createPackage = async (req, res) => {
       savings,
       sessions: sessions || "Unlimited",
       sessionCount: sessionCount || null,
-      maxMembers: maxMembers || 1,
       features: features || [],
       amenities: amenities || {
         gymAccess: true,
@@ -275,8 +280,15 @@ const updatePackage = async (req, res) => {
 
     // Recalculate savings if prices are updated
     if (updateData.originalPrice && updateData.discountedPrice) {
-      updateData.savings =
-        updateData.originalPrice - updateData.discountedPrice;
+      if (updateData.discountType === "percentage") {
+        // discountedPrice contains percentage value
+        updateData.savings =
+          (updateData.originalPrice * updateData.discountedPrice) / 100;
+      } else {
+        // discountType is "flat" - discountedPrice is the final price
+        updateData.savings =
+          updateData.originalPrice - updateData.discountedPrice;
+      }
     }
 
     const updatedPackage = await Package.findByIdAndUpdate(id, updateData, {

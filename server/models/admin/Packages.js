@@ -28,8 +28,8 @@ const packageSchema = new mongoose.Schema(
     },
     description: {
       type: String,
-      required: [true, "Description is required"],
       trim: true,
+      default: "",
     },
     duration: {
       value: {
@@ -50,7 +50,6 @@ const packageSchema = new mongoose.Schema(
     },
     discountedPrice: {
       type: Number,
-      required: [true, "Discounted price is required"],
       min: [0, "Price cannot be negative"],
     },
     savings: {
@@ -73,11 +72,6 @@ const packageSchema = new mongoose.Schema(
     sessionCount: {
       type: Number,
       default: null,
-    },
-    maxMembers: {
-      type: Number,
-      default: 1,
-      min: [1, "Must allow at least 1 member"],
     },
     features: {
       type: [String],

@@ -1025,6 +1025,7 @@ const sendEventReminderEmail = async (email, eventDetails) => {
       startTime,
       endTime,
       eventType,
+      customizedMsg,
     } = eventDetails;
 
     // Determine status message
@@ -1165,9 +1166,19 @@ const sendEventReminderEmail = async (email, eventDetails) => {
                 Hello ${memberName},
               </div>
               
+
               <p style="color: #555; line-height: 1.6;">
                 This is a friendly reminder about an upcoming event at FLAMEBOX.
               </p>
+              ${
+                {
+                  true: `<div class="info-section" style="background-color: #e0f2fe; border: 1px solid #38bdf8; color: #0369a1; margin-bottom: 18px;">
+                  <div class="info-title" style="color: #0369a1;">Custom Message from Admin</div>
+                  <div class="info-text">${customizedMsg}</div>
+                </div>`,
+                  false: "",
+                }[!!customizedMsg && customizedMsg.trim() !== ""]
+              }
               
               <div class="event-box">
                 <div class="event-title">${reason}</div>
@@ -1556,6 +1567,652 @@ const sendPackageExpirySMS = async (
   }
 };
 
+// Send Package Renewal Email
+const sendPackageRenewalEmail = async (email, renewalDetails) => {
+  try {
+    const {
+      memberName,
+      registrationNumber,
+      packageName,
+      startDate,
+      endDate,
+      amount,
+      amountPaid,
+      paymentStatus,
+      paymentDate,
+    } = renewalDetails;
+
+    const mailOptions = {
+      from: {
+        name: "FLAMEBOX",
+        address: "sarbaarun@gmail.com",
+      },
+      to: email,
+      subject: `🔄 Package Renewal Confirmation - ${packageName}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              background-color: #f4f4f4;
+              margin: 0;
+              padding: 0;
+            }
+            .container {
+              max-width: 600px;
+              margin: 20px auto;
+              background-color: #ffffff;
+              border-radius: 10px;
+              overflow: hidden;
+              box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            }
+            .header {
+              background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+              color: white;
+              padding: 30px;
+              text-align: center;
+            }
+            .header h1 {
+              margin: 0;
+              font-size: 32px;
+              letter-spacing: 2px;
+            }
+            .content {
+              padding: 40px 30px;
+            }
+            .greeting {
+              font-size: 18px;
+              color: #333;
+              margin-bottom: 20px;
+            }
+            .renewal-box {
+              background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+              border-left: 4px solid #16a34a;
+              padding: 20px;
+              margin: 20px 0;
+              border-radius: 8px;
+            }
+            .renewal-title {
+              font-size: 24px;
+              font-weight: bold;
+              color: #16a34a;
+              margin-bottom: 15px;
+            }
+            .info-row {
+              display: flex;
+              justify-content: space-between;
+              margin: 10px 0;
+              padding: 8px 0;
+              border-bottom: 1px solid #d1fae5;
+            }
+            .info-label {
+              font-weight: bold;
+              color: #166534;
+            }
+            .info-value {
+              color: #15803d;
+            }
+            .status-badge {
+              display: inline-block;
+              padding: 8px 16px;
+              background-color: #16a34a;
+              color: white;
+              border-radius: 20px;
+              font-size: 14px;
+              font-weight: bold;
+              margin: 10px 0;
+            }
+            .footer {
+              background-color: #1f2937;
+              color: #9ca3af;
+              padding: 20px;
+              text-align: center;
+              font-size: 14px;
+            }
+            .footer a {
+              color: #dc2626;
+              text-decoration: none;
+            }
+            .icon {
+              font-size: 48px;
+              margin-bottom: 10px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <div class="icon">🔄</div>
+              <h1>FLAMEBOX</h1>
+              <p style="margin: 10px 0 0 0; font-size: 16px;">Package Renewal Confirmation</p>
+            </div>
+            
+            <div class="content">
+              <div class="greeting">
+                Hello ${memberName},
+              </div>
+              
+              <p style="color: #555; line-height: 1.6;">
+                Great news! Your package has been successfully renewed. Here are the details:
+              </p>
+              
+              <div class="renewal-box">
+                <div class="renewal-title">${packageName}</div>
+                <div class="status-badge">✅ Renewed</div>
+                
+                <div class="info-row">
+                  <span class="info-label">Registration Number:</span>
+                  <span class="info-value">${registrationNumber}</span>
+                </div>
+                
+                <div class="info-row">
+                  <span class="info-label">Start Date:</span>
+                  <span class="info-value">${new Date(
+                    startDate
+                  ).toLocaleDateString("en-IN", {
+                    day: "2-digit",
+                    month: "long",
+                    year: "numeric",
+                  })}</span>
+                </div>
+                
+                <div class="info-row">
+                  <span class="info-label">End Date:</span>
+                  <span class="info-value">${new Date(
+                    endDate
+                  ).toLocaleDateString("en-IN", {
+                    day: "2-digit",
+                    month: "long",
+                    year: "numeric",
+                  })}</span>
+                </div>
+                
+                <div class="info-row">
+                  <span class="info-label">Package Amount:</span>
+                  <span class="info-value">₹${parseFloat(amount).toFixed(
+                    2
+                  )}</span>
+                </div>
+                
+                <div class="info-row">
+                  <span class="info-label">Amount Paid:</span>
+                  <span class="info-value">₹${parseFloat(amountPaid).toFixed(
+                    2
+                  )}</span>
+                </div>
+                
+                <div class="info-row">
+                  <span class="info-label">Payment Status:</span>
+                  <span class="info-value">${paymentStatus}</span>
+                </div>
+                
+                <div class="info-row">
+                  <span class="info-label">Payment Date:</span>
+                  <span class="info-value">${new Date(
+                    paymentDate
+                  ).toLocaleDateString("en-IN", {
+                    day: "2-digit",
+                    month: "long",
+                    year: "numeric",
+                  })}</span>
+                </div>
+              </div>
+              
+              <p style="color: #555; line-height: 1.6; margin-top: 20px;">
+                Thank you for continuing your fitness journey with FLAMEBOX. We're here to support your goals!
+              </p>
+              
+              <p style="color: #999; font-size: 14px; margin-top: 30px; font-style: italic;">
+                This is an automated notification. If you have any questions, please contact us.
+              </p>
+            </div>
+            
+            <div class="footer">
+              <p style="margin: 0 0 10px 0;">FLAMEBOX - Your Fitness Partner</p>
+              <p style="margin: 0;">
+                📧 <a href="mailto:sarbaarun@gmail.com">sarbaarun@gmail.com</a>
+              </p>
+              <p style="margin: 10px 0 0 0; font-size: 12px;">
+                © 2024 FLAMEBOX. All rights reserved.
+              </p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log(
+      `✅ Package renewal email sent to ${email} (Message ID: ${info.messageId})`
+    );
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error("❌ Error sending package renewal email:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Send Package Extension Email
+const sendPackageExtensionEmail = async (email, extensionDetails) => {
+  try {
+    const {
+      memberName,
+      registrationNumber,
+      packageName,
+      extensionDays,
+      newEndDate,
+      extraAmount,
+      amountPaid,
+    } = extensionDetails;
+
+    const mailOptions = {
+      from: {
+        name: "FLAMEBOX",
+        address: "sarbaarun@gmail.com",
+      },
+      to: email,
+      subject: `⏰ Package Extended - ${packageName}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              background-color: #f4f4f4;
+              margin: 0;
+              padding: 0;
+            }
+            .container {
+              max-width: 600px;
+              margin: 20px auto;
+              background-color: #ffffff;
+              border-radius: 10px;
+              overflow: hidden;
+              box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            }
+            .header {
+              background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+              color: white;
+              padding: 30px;
+              text-align: center;
+            }
+            .header h1 {
+              margin: 0;
+              font-size: 32px;
+              letter-spacing: 2px;
+            }
+            .content {
+              padding: 40px 30px;
+            }
+            .greeting {
+              font-size: 18px;
+              color: #333;
+              margin-bottom: 20px;
+            }
+            .extension-box {
+              background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+              border-left: 4px solid #2563eb;
+              padding: 20px;
+              margin: 20px 0;
+              border-radius: 8px;
+            }
+            .extension-title {
+              font-size: 24px;
+              font-weight: bold;
+              color: #2563eb;
+              margin-bottom: 15px;
+            }
+            .info-row {
+              display: flex;
+              justify-content: space-between;
+              margin: 10px 0;
+              padding: 8px 0;
+              border-bottom: 1px solid #bfdbfe;
+            }
+            .info-label {
+              font-weight: bold;
+              color: #1e40af;
+            }
+            .info-value {
+              color: #1e3a8a;
+            }
+            .highlight-box {
+              background-color: #fef3c7;
+              border: 2px solid #fbbf24;
+              border-radius: 8px;
+              padding: 15px;
+              margin: 20px 0;
+              text-align: center;
+            }
+            .highlight-text {
+              font-size: 20px;
+              font-weight: bold;
+              color: #92400e;
+            }
+            .footer {
+              background-color: #1f2937;
+              color: #9ca3af;
+              padding: 20px;
+              text-align: center;
+              font-size: 14px;
+            }
+            .footer a {
+              color: #dc2626;
+              text-decoration: none;
+            }
+            .icon {
+              font-size: 48px;
+              margin-bottom: 10px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <div class="icon">⏰</div>
+              <h1>FLAMEBOX</h1>
+              <p style="margin: 10px 0 0 0; font-size: 16px;">Package Extension Confirmation</p>
+            </div>
+            
+            <div class="content">
+              <div class="greeting">
+                Hello ${memberName},
+              </div>
+              
+              <p style="color: #555; line-height: 1.6;">
+                Good news! Your package has been extended. Here are the details:
+              </p>
+              
+              <div class="highlight-box">
+                <div class="highlight-text">+${extensionDays} Days Added!</div>
+              </div>
+              
+              <div class="extension-box">
+                <div class="extension-title">${packageName}</div>
+                
+                <div class="info-row">
+                  <span class="info-label">Registration Number:</span>
+                  <span class="info-value">${registrationNumber}</span>
+                </div>
+                
+                <div class="info-row">
+                  <span class="info-label">Extension Days:</span>
+                  <span class="info-value">${extensionDays} days</span>
+                </div>
+                
+                <div class="info-row">
+                  <span class="info-label">New End Date:</span>
+                  <span class="info-value">${new Date(
+                    newEndDate
+                  ).toLocaleDateString("en-IN", {
+                    day: "2-digit",
+                    month: "long",
+                    year: "numeric",
+                  })}</span>
+                </div>
+                
+                ${
+                  extraAmount && parseFloat(extraAmount) > 0
+                    ? `
+                <div class="info-row">
+                  <span class="info-label">Extra Amount:</span>
+                  <span class="info-value">₹${parseFloat(extraAmount).toFixed(
+                    2
+                  )}</span>
+                </div>
+                
+                <div class="info-row">
+                  <span class="info-label">Amount Paid:</span>
+                  <span class="info-value">₹${parseFloat(
+                    amountPaid || 0
+                  ).toFixed(2)}</span>
+                </div>
+                `
+                    : ""
+                }
+              </div>
+              
+              <p style="color: #555; line-height: 1.6; margin-top: 20px;">
+                Your package validity has been extended. Continue your fitness journey without any interruptions!
+              </p>
+              
+              <p style="color: #999; font-size: 14px; margin-top: 30px; font-style: italic;">
+                This is an automated notification. If you have any questions, please contact us.
+              </p>
+            </div>
+            
+            <div class="footer">
+              <p style="margin: 0 0 10px 0;">FLAMEBOX - Your Fitness Partner</p>
+              <p style="margin: 0;">
+                📧 <a href="mailto:sarbaarun@gmail.com">sarbaarun@gmail.com</a>
+              </p>
+              <p style="margin: 10px 0 0 0; font-size: 12px;">
+                © 2024 FLAMEBOX. All rights reserved.
+              </p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log(
+      `✅ Package extension email sent to ${email} (Message ID: ${info.messageId})`
+    );
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error("❌ Error sending package extension email:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Send Package Freeze Email
+const sendPackageFreezeEmail = async (email, freezeDetails) => {
+  try {
+    const {
+      memberName,
+      registrationNumber,
+      packageName,
+      freezeDays,
+      newEndDate,
+    } = freezeDetails;
+
+    const mailOptions = {
+      from: {
+        name: "FLAMEBOX",
+        address: "sarbaarun@gmail.com",
+      },
+      to: email,
+      subject: `❄️ Package Frozen - ${packageName}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              background-color: #f4f4f4;
+              margin: 0;
+              padding: 0;
+            }
+            .container {
+              max-width: 600px;
+              margin: 20px auto;
+              background-color: #ffffff;
+              border-radius: 10px;
+              overflow: hidden;
+              box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            }
+            .header {
+              background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+              color: white;
+              padding: 30px;
+              text-align: center;
+            }
+            .header h1 {
+              margin: 0;
+              font-size: 32px;
+              letter-spacing: 2px;
+            }
+            .content {
+              padding: 40px 30px;
+            }
+            .greeting {
+              font-size: 18px;
+              color: #333;
+              margin-bottom: 20px;
+            }
+            .freeze-box {
+              background: linear-gradient(135deg, #cffafe 0%, #a5f3fc 100%);
+              border-left: 4px solid #06b6d4;
+              padding: 20px;
+              margin: 20px 0;
+              border-radius: 8px;
+            }
+            .freeze-title {
+              font-size: 24px;
+              font-weight: bold;
+              color: #06b6d4;
+              margin-bottom: 15px;
+            }
+            .info-row {
+              display: flex;
+              justify-content: space-between;
+              margin: 10px 0;
+              padding: 8px 0;
+              border-bottom: 1px solid #a5f3fc;
+            }
+            .info-label {
+              font-weight: bold;
+              color: #0891b2;
+            }
+            .info-value {
+              color: #0e7490;
+            }
+            .info-section {
+              background-color: #e0f2fe;
+              border: 1px solid #38bdf8;
+              border-radius: 8px;
+              padding: 15px;
+              margin: 20px 0;
+            }
+            .info-title {
+              font-weight: bold;
+              color: #0369a1;
+              margin-bottom: 10px;
+              font-size: 16px;
+            }
+            .info-text {
+              color: #075985;
+              line-height: 1.6;
+            }
+            .footer {
+              background-color: #1f2937;
+              color: #9ca3af;
+              padding: 20px;
+              text-align: center;
+              font-size: 14px;
+            }
+            .footer a {
+              color: #dc2626;
+              text-decoration: none;
+            }
+            .icon {
+              font-size: 48px;
+              margin-bottom: 10px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <div class="icon">❄️</div>
+              <h1>FLAMEBOX</h1>
+              <p style="margin: 10px 0 0 0; font-size: 16px;">Package Freeze Confirmation</p>
+            </div>
+            
+            <div class="content">
+              <div class="greeting">
+                Hello ${memberName},
+              </div>
+              
+              <p style="color: #555; line-height: 1.6;">
+                Your package has been frozen as requested. Here are the details:
+              </p>
+              
+              <div class="freeze-box">
+                <div class="freeze-title">${packageName}</div>
+                
+                <div class="info-row">
+                  <span class="info-label">Registration Number:</span>
+                  <span class="info-value">${registrationNumber}</span>
+                </div>
+                
+                <div class="info-row">
+                  <span class="info-label">Freeze Days:</span>
+                  <span class="info-value">${freezeDays} days</span>
+                </div>
+                
+                <div class="info-row">
+                  <span class="info-label">New End Date:</span>
+                  <span class="info-value">${new Date(
+                    newEndDate
+                  ).toLocaleDateString("en-IN", {
+                    day: "2-digit",
+                    month: "long",
+                    year: "numeric",
+                  })}</span>
+                </div>
+              </div>
+              
+              <div class="info-section">
+                <div class="info-title">ℹ️ What This Means</div>
+                <div class="info-text">
+                  Your package validity has been extended by ${freezeDays} days to compensate for the freeze period. 
+                  You can continue your fitness journey when you're ready!
+                </div>
+              </div>
+              
+              <p style="color: #555; line-height: 1.6; margin-top: 20px;">
+                We understand that life happens. When you're ready to resume, we'll be here waiting for you!
+              </p>
+              
+              <p style="color: #999; font-size: 14px; margin-top: 30px; font-style: italic;">
+                This is an automated notification. If you have any questions, please contact us.
+              </p>
+            </div>
+            
+            <div class="footer">
+              <p style="margin: 0 0 10px 0;">FLAMEBOX - Your Fitness Partner</p>
+              <p style="margin: 0;">
+                📧 <a href="mailto:sarbaarun@gmail.com">sarbaarun@gmail.com</a>
+              </p>
+              <p style="margin: 10px 0 0 0; font-size: 12px;">
+                © 2024 FLAMEBOX. All rights reserved.
+              </p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log(
+      `✅ Package freeze email sent to ${email} (Message ID: ${info.messageId})`
+    );
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error("❌ Error sending package freeze email:", error);
+    return { success: false, error: error.message };
+  }
+};
+
 module.exports = {
   sendOTPEmail,
   sendPasswordResetEmail,
@@ -1565,4 +2222,7 @@ module.exports = {
   sendEventReminderSMS,
   sendPackageExpiryEmail,
   sendPackageExpirySMS,
+  sendPackageRenewalEmail,
+  sendPackageExtensionEmail,
+  sendPackageFreezeEmail,
 };

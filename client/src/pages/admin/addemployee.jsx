@@ -24,6 +24,7 @@ import {
   Eye,
   EyeOff,
   Info,
+  IndianRupee,
 } from "lucide-react";
 import {
   addEmployee,
@@ -800,7 +801,7 @@ const AddEmployee = () => {
 
                   <div className="bg-gray-700/50 rounded-lg p-4">
                     <label className="text-xs text-gray-400 block mb-1 flex items-center gap-2">
-                      <DollarSign className="w-4 h-4" />
+                      <IndianRupee className="w-4 h-4" />
                       Monthly Salary
                     </label>
                     <p className="text-white font-medium text-xl">
@@ -1068,7 +1069,7 @@ const AddEmployee = () => {
               {/* Salary */}
               <div>
                 <label className="block text-sm font-semibold text-gray-300 mb-2">
-                  <DollarSign className="w-4 h-4 inline mr-2" />
+                  <IndianRupee className="w-4 h-4 inline mr-2" />
                   Monthly Salary *
                 </label>
                 <input

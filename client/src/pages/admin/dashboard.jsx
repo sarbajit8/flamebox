@@ -20,6 +20,7 @@ import {
   X,
   CreditCard,
   Clock,
+  IndianRupee,
 } from "lucide-react";
 import axios from "axios";
 import { toast } from "sonner";
@@ -94,7 +95,7 @@ const AdminDashboard = () => {
     {
       value: loading ? "..." : formatCurrency(dashboardStats.totalPaid),
       label: "Total Paid",
-      icon: DollarSign,
+      icon: IndianRupee,
       color: "from-green-400 to-emerald-400",
       rotation: -45,
     },

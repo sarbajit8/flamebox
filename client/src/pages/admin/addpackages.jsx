@@ -20,6 +20,7 @@ import {
   Sparkles,
   Loader2,
   AlertCircle,
+  IndianRupee,
 } from "lucide-react";
 import {
   fetchAllPackages,
@@ -58,7 +59,6 @@ const AddPackages = () => {
     isActive: true,
     description: "",
     category: "Basic",
-    maxMembers: 1,
     amenities: {
       gymAccess: true,
       lockerRoom: true,
@@ -88,7 +88,7 @@ const AddPackages = () => {
           import.meta.env.VITE_API_BASE_URL || "http://localhost:3000"
         }/api/package/features`,
         {
-          credentials: 'include'
+          credentials: "include",
         }
       );
       const data = await response.json();
@@ -182,7 +182,6 @@ const AddPackages = () => {
       isActive: true,
       description: "",
       category: "Basic",
-      maxMembers: 1,
       amenities: {
         gymAccess: true,
         lockerRoom: true,
@@ -259,7 +258,6 @@ const AddPackages = () => {
       isActive: pkg.isActive,
       description: pkg.description,
       category: pkg.category,
-      maxMembers: pkg.maxMembers,
       amenities: pkg.amenities || {
         gymAccess: true,
         lockerRoom: true,
@@ -501,8 +499,12 @@ const AddPackages = () => {
                       {pkg.status}
                     </button>
                   </div>
-                  <h3 className="text-sm font-bold mb-0.5 truncate">{pkg.packageName}</h3>
-                  <p className="text-white/80 text-xs line-clamp-2">{pkg.description}</p>
+                  <h3 className="text-sm font-bold mb-0.5 truncate">
+                    {pkg.packageName}
+                  </h3>
+                  <p className="text-white/80 text-xs line-clamp-2">
+                    {pkg.description}
+                  </p>
                 </div>
 
                 {/* Package Body */}
@@ -510,17 +512,15 @@ const AddPackages = () => {
                   {/* Price */}
                   <div className="flex items-center gap-1.5 mb-2 flex-wrap">
                     <div className="text-lg font-bold text-white">
-                      ₹{pkg.discountedPrice}
+                      ₹{pkg.originalPrice}
                     </div>
-                    {pkg.originalPrice && (
-                      <>
-                        <div className="text-xs text-gray-400 line-through">
-                          ₹{pkg.originalPrice}
-                        </div>
-                        <div className="px-1.5 py-0.5 bg-green-600/20 text-green-400 rounded text-[10px] font-semibold">
-                          Save ₹{pkg.savings}
-                        </div>
-                      </>
+                    {pkg.discountedPrice > 0 && (
+                      <div className="px-1.5 py-0.5 bg-green-600/20 text-green-400 rounded text-[10px] font-semibold">
+                        Max Discount:{" "}
+                        {pkg.discountType === "percentage"
+                          ? `${pkg.discountedPrice}%`
+                          : `₹${pkg.discountedPrice}`}
+                      </div>
                     )}
                   </div>
 
@@ -542,15 +542,6 @@ const AddPackages = () => {
                       </span>
                       <span className="text-white font-medium text-[11px]">
                         {pkg.sessions}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-gray-400 flex items-center gap-1">
-                        <Users className="w-3 h-3" />
-                        Max Members
-                      </span>
-                      <span className="text-white font-medium text-[11px]">
-                        {pkg.maxMembers}
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-xs">
@@ -741,14 +732,13 @@ const AddPackages = () => {
               {/* Description */}
               <div>
                 <label className="block text-sm font-semibold text-gray-300 mb-2">
-                  Description *
+                  Description
                 </label>
                 <textarea
                   name="description"
                   value={formData.description}
                   onChange={handleInputChange}
                   rows="3"
-                  required
                   className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                   placeholder="Describe the package benefits and features..."
                 />
@@ -759,7 +749,7 @@ const AddPackages = () => {
                 <div>
                   <label className="block text-sm font-semibold text-gray-300 mb-2">
                     <Clock className="w-4 h-4 inline mr-2" />
-                    Duration Value *
+                    Duration *
                   </label>
                   <input
                     type="number"
@@ -773,9 +763,7 @@ const AddPackages = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-300 mb-2">
-                    Duration Unit *
-                  </label>
+                  <label className="block text-sm font-semibold text-gray-300 mb-7"></label>
                   <select
                     name="durationUnit"
                     value={formData.duration.unit}
@@ -794,14 +782,13 @@ const AddPackages = () => {
               <div>
                 <label className="block text-sm font-semibold text-gray-300 mb-2">
                   <Zap className="w-4 h-4 inline mr-2" />
-                  Sessions *
+                  Sessions
                 </label>
                 <input
                   type="text"
                   name="sessions"
                   value={formData.sessions}
                   onChange={handleInputChange}
-                  required
                   className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                   placeholder="e.g., Unlimited, 12 Sessions"
                 />
@@ -811,7 +798,7 @@ const AddPackages = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-300 mb-2">
-                    <DollarSign className="w-4 h-4 inline mr-2" />
+                    <IndianRupee className="w-4 h-4 inline mr-2" />
                     Original Price (₹) *
                   </label>
                   <input
@@ -827,7 +814,8 @@ const AddPackages = () => {
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-300 mb-2">
-                    Discounted Price (₹) *
+                    Discount Value{" "}
+                    {formData.discountType === "percentage" ? "(%)" : "(₹)"} *
                   </label>
                   <input
                     type="number"
@@ -837,7 +825,9 @@ const AddPackages = () => {
                     required
                     min="0"
                     className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    placeholder="1200"
+                    placeholder={
+                      formData.discountType === "percentage" ? "20" : "1200"
+                    }
                   />
                 </div>
               </div>
@@ -877,24 +867,6 @@ const AddPackages = () => {
                     <option value="true">Yes</option>
                   </select>
                 </div>
-              </div>
-
-              {/* Max Members */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-300 mb-2">
-                  <Users className="w-4 h-4 inline mr-2" />
-                  Maximum Members *
-                </label>
-                <input
-                  type="number"
-                  name="maxMembers"
-                  value={formData.maxMembers}
-                  onChange={handleInputChange}
-                  required
-                  min="1"
-                  className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  placeholder="1"
-                />
               </div>
 
               {/* Features */}
@@ -970,7 +942,7 @@ const AddPackages = () => {
               </div>
 
               {/* Status & Featured */}
-              <div className="grid grid-cols-2 gap-4">
+              <div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-300 mb-2">
                     Package Status *
@@ -985,19 +957,6 @@ const AddPackages = () => {
                     <option value="Inactive">Inactive</option>
                     <option value="Coming Soon">Coming Soon</option>
                   </select>
-                </div>
-                <div className="flex items-end">
-                  <label className="flex items-center gap-3 text-sm text-gray-300 cursor-pointer hover:bg-gray-700/50 p-3 rounded w-full">
-                    <input
-                      type="checkbox"
-                      name="isFeatured"
-                      checked={formData.isFeatured}
-                      onChange={handleInputChange}
-                      className="w-4 h-4 text-purple-600 bg-gray-800 border-gray-600 rounded focus:ring-purple-500 focus:ring-2"
-                    />
-                    <Star className="w-4 h-4" />
-                    Featured Package
-                  </label>
                 </div>
               </div>
 

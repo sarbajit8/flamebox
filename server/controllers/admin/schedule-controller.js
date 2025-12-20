@@ -145,8 +145,16 @@ const updateSchedule = async (req, res) => {
 const addSpecialDate = async (req, res) => {
   try {
     console.log("📅 Adding special date...");
-    const { date, open, is24Hours, startTime, endTime, reason, eventType } =
-      req.body;
+    const {
+      date,
+      open,
+      is24Hours,
+      startTime,
+      endTime,
+      reason,
+      eventType,
+      customizedMsg,
+    } = req.body;
 
     // Validation
     if (!date || !reason) {
@@ -171,6 +179,7 @@ const addSpecialDate = async (req, res) => {
             endTime: endTime || "",
             reason,
             eventType: eventType || "holiday",
+            customizedMsg: customizedMsg || "",
             createdBy: req.user?._id,
           },
         ],
@@ -185,6 +194,7 @@ const addSpecialDate = async (req, res) => {
         endTime: endTime || "",
         reason,
         eventType: eventType || "holiday",
+        customizedMsg: customizedMsg || "",
         createdBy: req.user?._id,
       });
 
@@ -396,6 +406,7 @@ const sendEventReminders = async () => {
         startTime: event.startTime,
         endTime: event.endTime,
         eventType: event.eventType,
+        customizedMsg: event.customizedMsg || "",
       };
 
       for (const member of members) {

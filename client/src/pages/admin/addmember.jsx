@@ -22,6 +22,8 @@ import {
   Activity,
   Clock,
   Package as PackageIcon,
+  IndianRupee,
+  ChevronRight,
 } from "lucide-react";
 import {
   fetchAllMembers,
@@ -106,6 +108,8 @@ const Addmember = () => {
   });
 
   // Freeze package states
+  const [isFreezeSelectionModalOpen, setIsFreezeSelectionModalOpen] =
+    useState(false);
   const [isFreezeModalOpen, setIsFreezeModalOpen] = useState(false);
   const [selectedFreezePackage, setSelectedFreezePackage] = useState(null);
   const [freezeStartDate, setFreezeStartDate] = useState("");
@@ -113,6 +117,8 @@ const Addmember = () => {
   const [isFreezing, setIsFreezing] = useState(false);
 
   // Extension package states
+  const [isExtensionSelectionModalOpen, setIsExtensionSelectionModalOpen] =
+    useState(false);
   const [isExtensionModalOpen, setIsExtensionModalOpen] = useState(false);
   const [selectedExtensionPackage, setSelectedExtensionPackage] =
     useState(null);
@@ -416,6 +422,25 @@ const Addmember = () => {
         [name]: type === "checkbox" ? checked : value,
       };
 
+      // Validate discount against maxDiscount for percentage type
+      if (name === "discount" && value) {
+        const discountValue = parseFloat(value);
+        const maxDiscount = prev.maxDiscount || 0;
+        const discountType = prev.discountType || "flat";
+
+        if (discountType === "percentage" && discountValue > maxDiscount) {
+          toast.error(
+            `Discount cannot exceed ${maxDiscount}% for this package`
+          );
+          updated.discount = maxDiscount;
+        } else if (discountType === "flat" && discountValue > maxDiscount) {
+          toast.error(
+            `Discount cannot exceed ₹${maxDiscount} for this package`
+          );
+          updated.discount = maxDiscount;
+        }
+      }
+
       // Auto-calculate totalPending = (amount - discount) - totalPaid
       if (name === "amount" || name === "discount" || name === "totalPaid") {
         const amount =
@@ -424,7 +449,16 @@ const Addmember = () => {
           parseFloat(name === "discount" ? value : updated.discount) || 0;
         const totalPaid =
           parseFloat(name === "totalPaid" ? value : updated.totalPaid) || 0;
-        const finalAmount = amount - discount;
+
+        // Calculate discount amount based on type
+        let discountAmount = 0;
+        if (updated.discountType === "percentage") {
+          discountAmount = (amount * discount) / 100;
+        } else {
+          discountAmount = discount;
+        }
+
+        const finalAmount = amount - discountAmount;
         updated.totalPending = Math.max(0, finalAmount - totalPaid);
       }
 
@@ -435,12 +469,17 @@ const Addmember = () => {
     if (name === "packageId" && value) {
       const selectedPackage = packages.find((pkg) => pkg._id === value);
       if (selectedPackage) {
-        const amount =
-          selectedPackage.discountedPrice || selectedPackage.originalPrice;
+        const amount = selectedPackage.originalPrice;
+        // Store discount type and value for calculation
+        const maxDiscount = selectedPackage.discountedPrice || 0;
+        const discountType = selectedPackage.discountType || "flat";
+
         setPackageFormData((prev) => {
           const updated = {
             ...prev,
             amount: amount,
+            maxDiscount: maxDiscount,
+            discountType: discountType,
             totalPending: amount - (prev.discount || 0) - (prev.totalPaid || 0),
           };
 
@@ -473,9 +512,20 @@ const Addmember = () => {
       return;
     }
 
-    const finalAmount =
-      parseFloat(packageFormData.amount) -
-      (parseFloat(packageFormData.discount) || 0);
+    // Calculate final amount based on discount type
+    const baseAmount = parseFloat(packageFormData.amount);
+    const discountValue = parseFloat(packageFormData.discount) || 0;
+    let discountAmount = 0;
+
+    if (packageFormData.discountType === "percentage") {
+      // Calculate discount from percentage
+      discountAmount = (baseAmount * discountValue) / 100;
+    } else {
+      // Flat discount
+      discountAmount = discountValue;
+    }
+
+    const finalAmount = baseAmount - discountAmount;
     const paid = parseFloat(packageFormData.totalPaid) || 0;
     const pending = parseFloat(packageFormData.totalPending) || 0;
 
@@ -485,8 +535,9 @@ const Addmember = () => {
       packageType: selectedPackage.packageType,
       startDate: packageFormData.startDate,
       endDate: packageFormData.endDate,
-      amount: parseFloat(packageFormData.amount),
-      discount: parseFloat(packageFormData.discount) || 0,
+      amount: baseAmount,
+      discount: discountValue,
+      discountType: packageFormData.discountType,
       finalAmount: finalAmount,
       totalPaid: paid,
       totalPending: pending,
@@ -1075,7 +1126,14 @@ const Addmember = () => {
                       </td>
                       <td className="px-6 py-4">
                         <div className="text-sm text-gray-300">
-                          {new Date(member.joiningDate).toLocaleDateString()}
+                          {new Date(member.joiningDate).toLocaleDateString(
+                            "en-GB",
+                            {
+                              day: "2-digit",
+                              month: "2-digit",
+                              year: "2-digit",
+                            }
+                          )}
                         </div>
                       </td>
                       <td className="px-6 py-4">
@@ -1328,7 +1386,7 @@ const Addmember = () => {
               <div className="bg-gray-700/50 rounded-xl p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                    <DollarSign className="w-5 h-5 text-red-400" />
+                    <IndianRupee className="w-5 h-5 text-red-400" />
                     Payment Summary
                   </h3>
                   <button
@@ -1403,10 +1461,43 @@ const Addmember = () => {
               {selectedMember.packages &&
                 selectedMember.packages.length > 0 && (
                   <div className="bg-gray-700/50 rounded-xl p-6">
-                    <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                      <PackageIcon className="w-5 h-5 text-red-400" />
-                      All Packages ({selectedMember.packages.length})
-                    </h3>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                        <PackageIcon className="w-5 h-5 text-red-400" />
+                        All Packages ({selectedMember.packages.length})
+                      </h3>
+                      <select
+                        className="px-4 py-2 rounded-lg font-semibold bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-red-500 cursor-pointer"
+                        value=""
+                        onChange={(e) => {
+                          const action = e.target.value;
+                          if (action === "renew") {
+                            // Open renew modal with all member packages
+                            setRenewPackageList(selectedMember.packages || []);
+                            setIsRenewModalOpen(true);
+                          } else if (action === "upgrade") {
+                            // Open upgrade modal
+                            setIsUpgradeModalOpen(true);
+                          } else if (action === "freeze") {
+                            // Open freeze selection modal
+                            setIsFreezeSelectionModalOpen(true);
+                          } else if (action === "extension") {
+                            // Open extension selection modal
+                            setIsExtensionSelectionModalOpen(true);
+                          }
+                          // Reset dropdown
+                          e.target.value = "";
+                        }}
+                      >
+                        <option value="" disabled>
+                          Select Action
+                        </option>
+                        <option value="renew">Renew</option>
+                        <option value="upgrade">Upgrade</option>
+                        <option value="freeze">Freeze</option>
+                        <option value="extension">Extension</option>
+                      </select>
+                    </div>
                     <div className="space-y-3">
                       {selectedMember.packages.map((pkg, index) => (
                         <div key={index} className="bg-gray-700 rounded-lg p-4">
@@ -1471,47 +1562,6 @@ const Addmember = () => {
                               >
                                 Expire (Test)
                               </button>
-                              <select
-                                className="px-3 py-1 rounded text-xs font-semibold bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-red-500 cursor-pointer"
-                                value=""
-                                onChange={(e) => {
-                                  const action = e.target.value;
-                                  if (action === "renew") {
-                                    // Open renew modal with all member packages
-                                    setRenewPackageList(
-                                      selectedMember.packages || []
-                                    );
-                                    setIsRenewModalOpen(true);
-                                  } else if (action === "upgrade") {
-                                    // Open upgrade modal
-                                    setIsUpgradeModalOpen(true);
-                                  } else if (action === "freeze") {
-                                    // Open freeze modal directly
-                                    setSelectedFreezePackage(pkg);
-                                    setFreezeStartDate("");
-                                    setFreezeEndDate("");
-                                    setIsFreezeModalOpen(true);
-                                  } else if (action === "extension") {
-                                    // Open extension modal
-                                    setSelectedExtensionPackage(pkg);
-                                    setExtensionDays("");
-                                    setAddExtraAmount(false);
-                                    setExtensionAmount("");
-                                    setExtensionPaid("");
-                                    setIsExtensionModalOpen(true);
-                                  }
-                                  // Reset dropdown
-                                  e.target.value = "";
-                                }}
-                              >
-                                <option value="" disabled>
-                                  Select Action
-                                </option>
-                                <option value="renew">Renew</option>
-                                <option value="upgrade">Upgrade</option>
-                                <option value="freeze">Freeze</option>
-                                <option value="extension">Extension</option>
-                              </select>
                             </div>
                           </div>
                           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
@@ -1563,7 +1613,7 @@ const Addmember = () => {
                 selectedMember.paymentHistory.length > 0 && (
                   <div className="bg-gray-700/50 rounded-xl p-6">
                     <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                      <DollarSign className="w-5 h-5 text-red-400" />
+                      <IndianRupee className="w-5 h-5 text-red-400" />
                       Payment History ({selectedMember.paymentHistory.length})
                     </h3>
                     <div className="overflow-x-auto">
@@ -1582,9 +1632,17 @@ const Addmember = () => {
                             <th className="text-left py-3 px-4 text-gray-400 font-semibold text-sm">
                               Payment Method
                             </th>
-                            <th className="text-left py-3 px-4 text-gray-400 font-semibold text-sm">
-                              Transaction ID
-                            </th>
+                            {/* Only show Transaction ID column if at least one payment has a valid transactionId */}
+                            {selectedMember.paymentHistory.some(
+                              (payment) =>
+                                payment.transactionId &&
+                                payment.transactionId !== "-" &&
+                                payment.transactionId.trim() !== ""
+                            ) && (
+                              <th className="text-left py-3 px-4 text-gray-400 font-semibold text-sm">
+                                Transaction ID
+                              </th>
+                            )}
                             <th className="text-left py-3 px-4 text-gray-400 font-semibold text-sm">
                               Status
                             </th>
@@ -1613,9 +1671,21 @@ const Addmember = () => {
                                 <td className="py-3 px-4 text-white text-sm">
                                   {payment.paymentMethod || "N/A"}
                                 </td>
-                                <td className="py-3 px-4 text-gray-400 text-sm">
-                                  {payment.transactionId || "-"}
-                                </td>
+                                {/* Only show Transaction ID cell if it is valid and the column is shown */}
+                                {selectedMember.paymentHistory.some(
+                                  (p) =>
+                                    p.transactionId &&
+                                    p.transactionId !== "-" &&
+                                    p.transactionId.trim() !== ""
+                                ) && (
+                                  <td className="py-3 px-4 text-gray-400 text-sm">
+                                    {payment.transactionId &&
+                                    payment.transactionId !== "-" &&
+                                    payment.transactionId.trim() !== ""
+                                      ? payment.transactionId
+                                      : ""}
+                                  </td>
+                                )}
                                 <td className="py-3 px-4">
                                   <span
                                     className={`px-2 py-1 rounded text-xs font-semibold ${
@@ -1745,7 +1815,7 @@ const Addmember = () => {
           <div className="bg-gray-800 rounded-xl p-6 w-full max-w-md border border-gray-700 shadow-2xl">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-xl font-semibold text-white flex items-center gap-2">
-                <DollarSign className="w-6 h-6 text-red-400" />
+                <IndianRupee className="w-6 h-6 text-red-400" />
                 Edit Payment
               </h3>
               <button
@@ -1791,7 +1861,7 @@ const Addmember = () => {
                     onChange={(e) =>
                       setPaymentEditData({
                         ...paymentEditData,
-                        amountPaid: parseFloat(e.target.value) || 0,
+                        amountPaid: parseFloat(e.target.value) || "",
                       })
                     }
                     className="w-full pl-8 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500"
@@ -2577,9 +2647,19 @@ const Addmember = () => {
                         durationInDays = value * 365;
                       }
 
-                      const packageAmount = pkg.discountedPrice || 0;
+                      const packageAmount = pkg.originalPrice || 0;
                       const discount = upgradeFormData.discount || 0;
-                      const finalAmount = packageAmount - discount;
+                      const discountType = pkg.discountType || "flat";
+
+                      // Calculate discount amount
+                      let discountAmount = 0;
+                      if (discountType === "percentage") {
+                        discountAmount = (packageAmount * discount) / 100;
+                      } else {
+                        discountAmount = discount;
+                      }
+
+                      const finalAmount = packageAmount - discountAmount;
 
                       // Calculate totalPaid and totalPending based on current payment status
                       let totalPaid = upgradeFormData.totalPaid || 0;
@@ -2593,6 +2673,8 @@ const Addmember = () => {
                         ...upgradeFormData,
                         durationInDays: durationInDays,
                         amount: packageAmount,
+                        discountType: discountType,
+                        maxDiscount: pkg.discountedPrice || 0,
                         totalPaid: totalPaid,
                         totalPending: Math.max(0, finalAmount - totalPaid),
                       });
@@ -2602,8 +2684,8 @@ const Addmember = () => {
                   <option value="">-- Select Package --</option>
                   {packages.map((pkg) => (
                     <option key={pkg._id} value={pkg._id}>
-                      {pkg.packageName} - ₹{pkg.discountedPrice} (
-                      {pkg.duration.value} {pkg.duration.unit})
+                      {pkg.packageName} ({pkg.duration.value}{" "}
+                      {pkg.duration.unit})
                     </option>
                   ))}
                 </select>
@@ -3074,7 +3156,7 @@ const Addmember = () => {
                           <span>Adding...</span>
                         </>
                       ) : (
-                        "Add Package"
+                        "Upgrade Package"
                       )}
                     </button>
                     <button
@@ -3091,6 +3173,151 @@ const Addmember = () => {
                   </div>
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Freeze Package Selection Modal */}
+      {isFreezeSelectionModalOpen && selectedMember && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-gray-800 rounded-xl p-6 w-full max-w-md border border-gray-700 shadow-2xl">
+            <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-700">
+              <h3 className="text-xl font-semibold text-white flex items-center gap-2">
+                <PackageIcon className="w-6 h-6 text-blue-400" />
+                Freeze Package
+              </h3>
+              <button
+                onClick={() => setIsFreezeSelectionModalOpen(false)}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="mb-6">
+              <p className="text-gray-300 mb-4">
+                Select a package to freeze from the member's packages:
+              </p>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Select Package
+              </label>
+              <select
+                className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                onChange={(e) => {
+                  const selectedPkgId = e.target.value;
+                  if (selectedPkgId) {
+                    const packageToFreeze = selectedMember.packages.find(
+                      (p) => p._id === selectedPkgId
+                    );
+                    if (packageToFreeze) {
+                      const isFreezable =
+                        packageToFreeze.freezable ||
+                        packageToFreeze.packageId?.freezable;
+                      if (isFreezable) {
+                        setSelectedFreezePackage(packageToFreeze);
+                        setFreezeStartDate("");
+                        setFreezeEndDate("");
+                        setIsFreezeSelectionModalOpen(false);
+                        setIsFreezeModalOpen(true);
+                      } else {
+                        toast.error("This package cannot be frozen");
+                      }
+                    }
+                  }
+                }}
+                defaultValue=""
+              >
+                <option value="" disabled>
+                  -- Select Package --
+                </option>
+                {selectedMember.packages.map((p) => {
+                  const isFreezable = p.freezable || p.packageId?.freezable;
+                  return (
+                    <option key={p._id} value={p._id} disabled={!isFreezable}>
+                      {p.packageName} - {p.packageStatus}{" "}
+                      {!isFreezable ? "(Not Freezable)" : ""}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setIsFreezeSelectionModalOpen(false)}
+                className="flex-1 px-6 py-3 bg-gray-700 text-white rounded-lg font-semibold hover:bg-gray-600 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Extension Package Selection Modal */}
+      {isExtensionSelectionModalOpen && selectedMember && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-gray-800 rounded-xl p-6 w-full max-w-md border border-gray-700 shadow-2xl">
+            <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-700">
+              <h3 className="text-xl font-semibold text-white flex items-center gap-2">
+                <PackageIcon className="w-6 h-6 text-green-400" />
+                Extend Package
+              </h3>
+              <button
+                onClick={() => setIsExtensionSelectionModalOpen(false)}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="mb-6">
+              <p className="text-gray-300 mb-4">
+                Select a package to extend from the member's packages:
+              </p>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Select Package
+              </label>
+              <select
+                className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                onChange={(e) => {
+                  const selectedPkgId = e.target.value;
+                  if (selectedPkgId) {
+                    const packageToExtend = selectedMember.packages.find(
+                      (p) => p._id === selectedPkgId
+                    );
+                    if (packageToExtend) {
+                      setSelectedExtensionPackage(packageToExtend);
+                      setExtensionDays("");
+                      setAddExtraAmount(false);
+                      setExtensionAmount("");
+                      setExtensionPaid("");
+                      setIsExtensionSelectionModalOpen(false);
+                      setIsExtensionModalOpen(true);
+                    }
+                  }
+                }}
+                defaultValue=""
+              >
+                <option value="" disabled>
+                  -- Select Package --
+                </option>
+                {selectedMember.packages.map((p) => (
+                  <option key={p._id} value={p._id}>
+                    {p.packageName} - {p.packageStatus}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setIsExtensionSelectionModalOpen(false)}
+                className="flex-1 px-6 py-3 bg-gray-700 text-white rounded-lg font-semibold hover:bg-gray-600 transition-colors"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>
@@ -3596,7 +3823,7 @@ const Addmember = () => {
                           ? "Basic Info"
                           : step === 2
                           ? "Package & Payment"
-                          : "Additional"}
+                          : "Trainer"}
                       </span>
                     </div>
                   ))}
@@ -4059,8 +4286,7 @@ const Addmember = () => {
                             )
                             .map((pkg) => (
                               <option key={pkg._id} value={pkg._id}>
-                                {pkg.packageName} ({pkg.packageType}) - ₹
-                                {pkg.discountedPrice || pkg.originalPrice}
+                                {pkg.packageName} ({pkg.packageType})
                               </option>
                             ))}
                       </select>
@@ -4110,7 +4336,7 @@ const Addmember = () => {
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-semibold text-gray-300 mb-2">
-                          <DollarSign className="w-4 h-4 inline mr-2" />
+                          <IndianRupee className="w-4 h-4 inline mr-2" />
                           Amount *
                         </label>
                         <input
@@ -4125,13 +4351,17 @@ const Addmember = () => {
 
                       <div>
                         <label className="block text-sm font-semibold text-gray-300 mb-2">
-                          Discount
+                          Discount{" "}
+                          {packageFormData.discountType === "percentage"
+                            ? `(Max ${packageFormData.maxDiscount || 0}%)`
+                            : `(Max ₹${packageFormData.maxDiscount || 0})`}
                         </label>
                         <input
                           type="number"
                           name="discount"
                           value={packageFormData.discount}
                           onChange={handlePackageInputChange}
+                          max={packageFormData.maxDiscount || 0}
                           className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500"
                           placeholder="0"
                         />
@@ -4141,7 +4371,7 @@ const Addmember = () => {
                     <div className="grid grid-cols-3 gap-4">
                       <div>
                         <label className="block text-sm font-semibold text-gray-300 mb-2">
-                          <DollarSign className="w-4 h-4 inline mr-2" />
+                          <IndianRupee className="w-4 h-4 inline mr-2" />
                           Total Paid
                         </label>
                         <input
@@ -4156,7 +4386,7 @@ const Addmember = () => {
 
                       <div>
                         <label className="block text-sm font-semibold text-gray-300 mb-2">
-                          <DollarSign className="w-4 h-4 inline mr-2" />
+                          <IndianRupee className="w-4 h-4 inline mr-2" />
                           Total Pending (Due)
                         </label>
                         <input
@@ -4235,20 +4465,6 @@ const Addmember = () => {
                       />
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        name="isPrimary"
-                        checked={packageFormData.isPrimary}
-                        onChange={handlePackageInputChange}
-                        disabled={formData.packages.length === 0}
-                        className="w-4 h-4 text-red-600 bg-gray-700 border-gray-600 rounded focus:ring-red-500"
-                      />
-                      <label className="text-sm text-gray-300">
-                        Set as primary package
-                      </label>
-                    </div>
-
                     <button
                       type="button"
                       onClick={addPackageToForm}
@@ -4261,7 +4477,7 @@ const Addmember = () => {
                 </>
               )}
 
-              {/* STEP 3: Additional Information */}
+              {/* STEP 3: Trainer Information */}
               {currentStep === 3 && (
                 <>
                   {/* Trainer Assignment */}
@@ -4284,7 +4500,7 @@ const Addmember = () => {
                         <option value="">No Trainer</option>
                         {trainers.map((trainer) => (
                           <option key={trainer._id} value={trainer._id}>
-                            {trainer.fullName} - {trainer.email}
+                            {trainer.fullName}
                           </option>
                         ))}
                       </select>

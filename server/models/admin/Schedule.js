@@ -77,6 +77,10 @@ const scheduleSchema = new mongoose.Schema(
           enum: ["holiday", "special_hours", "closed", "event"],
           default: "holiday",
         },
+        customizedMsg: {
+          type: String,
+          default: "",
+        },
         notificationSent: {
           type: Boolean,
           default: false,

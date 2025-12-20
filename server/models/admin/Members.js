@@ -124,6 +124,11 @@ const memberSchema = new mongoose.Schema(
           default: 0,
           min: 0,
         },
+        discountType: {
+          type: String,
+          enum: ["flat", "percentage"],
+          default: "flat",
+        },
         finalAmount: {
           type: Number,
           required: true,

@@ -4,6 +4,9 @@ const {
   sendPaymentReceiptEmail,
   sendPackageExpiryEmail,
   sendPackageExpirySMS,
+  sendPackageRenewalEmail,
+  sendPackageExtensionEmail,
+  sendPackageFreezeEmail,
 } = require("../../helpers/email");
 
 // ============================================
@@ -111,6 +114,7 @@ const createMember = async (req, res) => {
           endDate: pkg.endDate,
           amount: pkg.amount,
           discount: pkg.discount || 0,
+          discountType: pkg.discountType || "flat",
           finalAmount: pkg.finalAmount || pkg.amount - (pkg.discount || 0),
           paymentStatus: pkg.paymentStatus || "Pending",
           paymentMethod: pkg.paymentMethod || "Cash",
@@ -297,7 +301,7 @@ const getAllMembers = async (req, res) => {
     // Fetch members
     const members = await Member.find(filter)
       .populate("assignedTrainer", "fullName email userName")
-      .populate("packages.packageId", "packageName packageType")
+      .populate("packages.packageId", "packageName packageType freezable")
       .sort(sort)
       .skip(skip)
       .limit(limit)
@@ -346,7 +350,7 @@ const getMemberById = async (req, res) => {
 
     const member = await Member.findOne({ _id: id, isDeleted: false })
       .populate("assignedTrainer", "name email phoneNumber")
-      .populate("packages.packageId")
+      .populate("packages.packageId", "packageName packageType freezable")
       .lean();
 
     if (!member) {
@@ -386,7 +390,7 @@ const getMemberByRegistrationNumber = async (req, res) => {
       isDeleted: false,
     })
       .populate("assignedTrainer", "name email")
-      .populate("packages.packageId")
+      .populate("packages.packageId", "packageName packageType freezable")
       .lean();
 
     if (!member) {
@@ -1048,7 +1052,7 @@ const updateMemberPayment = async (req, res) => {
         amount: amountPaid,
         paymentMethod: "Cash",
         packageName: member.currentPackage?.packageName || "General Payment",
-        transactionId: `PAY-${Date.now()}`,
+        transactionId: "",
         status: "Success",
         notes: `Payment update - Status: ${paymentStatus}`,
       });
@@ -1136,7 +1140,7 @@ const renewPackage = async (req, res) => {
 
     // Find member
     const member = await Member.findOne({ _id: id, isDeleted: false })
-      .populate("packages.packageId")
+      .populate("packages.packageId", "packageName packageType freezable")
       .populate("assignedTrainer", "name email");
 
     if (!member) {
@@ -1199,7 +1203,7 @@ const renewPackage = async (req, res) => {
         date: paymentDate || new Date(),
         amount: paid,
         paymentMethod: paymentMethod || "Cash",
-        transactionId: transactionId || `REN-${Date.now()}`,
+        transactionId: transactionId || "",
         packageName: packageToRenew.packageName,
         status: "Success",
         notes: `Package renewal payment`,
@@ -1209,9 +1213,11 @@ const renewPackage = async (req, res) => {
 
     await member.save();
 
-    // Send renewal email with invoice
+    // Send renewal email with invoice (existing payment receipt)
     if (member.email) {
       const isFullyPaid = pending === 0;
+
+      // Send payment receipt email
       await sendPaymentReceiptEmail(member.email, {
         fullName: member.fullName,
         registrationNumber: member.registrationNumber,
@@ -1227,7 +1233,21 @@ const renewPackage = async (req, res) => {
         packageName: packageToRenew.packageName,
         isFullyPaid: isFullyPaid,
       });
-      console.log("📧 Renewal email with invoice sent to:", member.email);
+      console.log("📧 Payment receipt email sent to:", member.email);
+
+      // Send renewal notification email
+      await sendPackageRenewalEmail(member.email, {
+        memberName: member.fullName,
+        registrationNumber: member.registrationNumber,
+        packageName: packageToRenew.packageName,
+        startDate: startDate,
+        endDate: endDate,
+        amount: amount,
+        amountPaid: paid,
+        paymentStatus: paymentStatus,
+        paymentDate: paymentDate || new Date(),
+      });
+      console.log("📧 Renewal notification email sent to:", member.email);
     }
 
     console.log(
@@ -1236,7 +1256,7 @@ const renewPackage = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Package renewed successfully and email sent",
+      message: "Package renewed successfully and emails sent",
       member,
     });
   } catch (error) {
@@ -1362,13 +1382,25 @@ const freezePackage = async (req, res) => {
 
     await member.save();
 
+    // Send freeze notification email
+    if (member.email) {
+      await sendPackageFreezeEmail(member.email, {
+        memberName: member.fullName,
+        registrationNumber: member.registrationNumber,
+        packageName: packageToFreeze.packageName,
+        freezeDays: freezeDays,
+        newEndDate: currentEndDate,
+      });
+      console.log("📧 Freeze notification email sent to:", member.email);
+    }
+
     console.log(
       `✅ Package frozen successfully. New end date: ${currentEndDate.toISOString()}`
     );
 
     return res.status(200).json({
       success: true,
-      message: `Package frozen for ${freezeDays} days. End date extended.`,
+      message: `Package frozen for ${freezeDays} days. End date extended and email sent.`,
       member,
     });
   } catch (error) {
@@ -1484,7 +1516,7 @@ const extendPackage = async (req, res) => {
           amount: parsedAmountPaid,
           paymentMethod: packageToExtend.paymentMethod || "Cash",
           packageName: packageToExtend.packageName,
-          transactionId: `EXT-${Date.now()}`,
+          transactionId: "",
           status: "Success",
           notes: `Extension payment - ${extensionDays} days extension`,
         });
@@ -1533,11 +1565,25 @@ const extendPackage = async (req, res) => {
 
     await member.save();
 
+    // Send extension notification email
+    if (member.email) {
+      await sendPackageExtensionEmail(member.email, {
+        memberName: member.fullName,
+        registrationNumber: member.registrationNumber,
+        packageName: packageToExtend.packageName,
+        extensionDays: extensionDays,
+        newEndDate: currentEndDate,
+        extraAmount: addExtraAmount ? extraAmount : null,
+        amountPaid: addExtraAmount ? amountPaid : null,
+      });
+      console.log("📧 Extension notification email sent to:", member.email);
+    }
+
     console.log("✅ Package extended successfully");
 
     return res.status(200).json({
       success: true,
-      message: `Package extended by ${extensionDays} days successfully`,
+      message: `Package extended by ${extensionDays} days successfully and email sent`,
       member,
     });
   } catch (error) {
@@ -1583,7 +1629,7 @@ const upgradePackage = async (req, res) => {
 
     // Find member
     const member = await Member.findOne({ _id: id, isDeleted: false })
-      .populate("packages.packageId")
+      .populate("packages.packageId", "packageName packageType freezable")
       .populate("assignedTrainer", "name email");
 
     if (!member) {
