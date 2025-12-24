@@ -1,5 +1,6 @@
 const Member = require("../../models/admin/Members");
 const Package = require("../../models/admin/Packages");
+const PaymentHistory = require("../../models/admin/PaymentHistory");
 const {
   sendPaymentReceiptEmail,
   sendPackageExpiryEmail,
@@ -191,6 +192,44 @@ const createMember = async (req, res) => {
         status: "Success",
         notes: "Initial payment",
       });
+
+      // Create payment history record
+      try {
+        const paymentRecord = await PaymentHistory.create({
+          memberId: newMember._id,
+          memberName: newMember.fullName,
+          memberEmail: newMember.email,
+          memberPhone: newMember.phoneNumber,
+          packageId: processedPackages[0].packageId,
+          packageName: processedPackages[0].packageName,
+          packageType: processedPackages[0].packageType,
+          transactionType: "New Membership",
+          amount: processedPackages[0].amount,
+          discount: processedPackages[0].discount,
+          finalAmount: processedPackages[0].finalAmount,
+          paymentStatus: "Paid",
+          paymentMethod: processedPackages[0].paymentMethod,
+          paymentDate: new Date(),
+          transactionId: processedPackages[0].transactionId,
+          membershipStartDate: processedPackages[0].startDate,
+          membershipEndDate: processedPackages[0].endDate,
+          notes: "Initial membership payment",
+          collectedBy: {
+            userId: req.user?.id,
+            userName: req.user?.fullName || req.user?.email,
+            role: req.user?.role,
+          },
+        });
+        console.log(
+          "💾 Payment history record created:",
+          paymentRecord.receiptNumber
+        );
+      } catch (paymentError) {
+        console.error(
+          "⚠️ Failed to create payment history record:",
+          paymentError
+        );
+      }
     }
 
     console.log(
@@ -685,6 +724,40 @@ const addPayment = async (req, res) => {
     };
 
     await member.addPayment(paymentData);
+
+    // Create payment history record
+    try {
+      const paymentRecord = await PaymentHistory.create({
+        memberId: member._id,
+        memberName: member.fullName,
+        memberEmail: member.email,
+        memberPhone: member.phoneNumber,
+        packageName: paymentData.packageName,
+        transactionType: "Partial Payment",
+        amount: parseFloat(paymentData.amount),
+        discount: 0,
+        finalAmount: parseFloat(paymentData.amount),
+        paymentStatus: paymentData.status === "Success" ? "Paid" : "Pending",
+        paymentMethod: paymentData.paymentMethod,
+        paymentDate: paymentData.date || new Date(),
+        transactionId: paymentData.transactionId,
+        notes: paymentData.notes || "Additional payment",
+        collectedBy: {
+          userId: req.user?.id,
+          userName: req.user?.fullName || req.user?.email,
+          role: req.user?.role,
+        },
+      });
+      console.log(
+        "💾 Payment history record created:",
+        paymentRecord.receiptNumber
+      );
+    } catch (paymentError) {
+      console.error(
+        "⚠️ Failed to create payment history record:",
+        paymentError
+      );
+    }
 
     console.log(`✅ Payment added: ₹${paymentData.amount}`);
 
@@ -1209,6 +1282,44 @@ const renewPackage = async (req, res) => {
         notes: `Package renewal payment`,
       });
       member.markModified("paymentHistory");
+
+      // Create payment history record
+      try {
+        const paymentRecord = await PaymentHistory.create({
+          memberId: member._id,
+          memberName: member.fullName,
+          memberEmail: member.email,
+          memberPhone: member.phoneNumber,
+          packageId: packageToRenew.packageId?._id || packageToRenew.packageId,
+          packageName: packageToRenew.packageName,
+          packageType: packageToRenew.packageType,
+          transactionType: "Renewal",
+          amount: parseFloat(amount),
+          discount: parseFloat(discount || 0),
+          finalAmount: finalAmount,
+          paymentStatus: paymentStatus || "Pending",
+          paymentMethod: paymentMethod || "Cash",
+          paymentDate: paymentDate || new Date(),
+          transactionId: transactionId || "",
+          membershipStartDate: startDate,
+          membershipEndDate: endDate,
+          notes: "Package renewal payment",
+          collectedBy: {
+            userId: req.user?.id,
+            userName: req.user?.fullName || req.user?.email,
+            role: req.user?.role,
+          },
+        });
+        console.log(
+          "💾 Renewal payment history record created:",
+          paymentRecord.receiptNumber
+        );
+      } catch (paymentError) {
+        console.error(
+          "⚠️ Failed to create payment history record:",
+          paymentError
+        );
+      }
     }
 
     await member.save();
@@ -1755,6 +1866,44 @@ const upgradePackage = async (req, res) => {
         status: "Success",
         notes: "Package upgrade payment",
       });
+
+      // Create payment history record
+      try {
+        const paymentRecord = await PaymentHistory.create({
+          memberId: member._id,
+          memberName: member.fullName,
+          memberEmail: member.email,
+          memberPhone: member.phoneNumber,
+          packageId: packageId,
+          packageName: packageDetails.packageName,
+          packageType: packageDetails.packageType,
+          transactionType: "Upgrade",
+          amount: parseFloat(amount),
+          discount: parseFloat(discount || 0),
+          finalAmount: finalAmount,
+          paymentStatus: "Paid",
+          paymentMethod: paymentMethod || "Cash",
+          paymentDate: paymentDate || new Date(),
+          transactionId: transactionId || "",
+          membershipStartDate: startDate,
+          membershipEndDate: endDate,
+          notes: "Package upgrade payment",
+          collectedBy: {
+            userId: req.user?.id,
+            userName: req.user?.fullName || req.user?.email,
+            role: req.user?.role,
+          },
+        });
+        console.log(
+          "💾 Upgrade payment history record created:",
+          paymentRecord.receiptNumber
+        );
+      } catch (paymentError) {
+        console.error(
+          "⚠️ Failed to create payment history record:",
+          paymentError
+        );
+      }
     }
 
     await member.save();

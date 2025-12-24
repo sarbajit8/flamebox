@@ -73,6 +73,7 @@ const membersRoutes = require("./routes/admin/members-routes");
 const leadsRoutes = require("./routes/admin/leads-routes");
 const dashboardRoutes = require("./routes/admin/dashboard-routes");
 const scheduleRoutes = require("./routes/admin/schedule-routes");
+const paymentHistoryRoutes = require("./routes/admin/paymenthistory-routes");
 
 // New role-based authentication routes
 const usersRoutes = require("./routes/auth/users-routes");
@@ -86,6 +87,7 @@ app.use("/api/packages", packagesRoutes);
 app.use("/api/package", packageFeaturesRoutes);
 app.use("/api", employeeRoutes);
 app.use("/api/admin/schedule", scheduleRoutes);
+app.use("/api/admin/payment-history", paymentHistoryRoutes);
 
 // Role-based authentication routes
 app.use("/api/auth/users", usersRoutes);

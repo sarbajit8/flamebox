@@ -26,6 +26,7 @@ import ForgotPassword from "./pages/auth/ForgotPassword";
 import ProtectedRoute from "./components/common/ProtectedRoute";
 import TrainerLayout from "./components/trainer/layout";
 import TrainerDashboard from "./pages/trainer/dashboard";
+import PaymentHistory from "./pages/admin/paymenthistory";
 import { useEffect } from "react";
 import { useDispatch } from "react-redux";
 import { verifySession } from "./store/auth/auth-slice";
@@ -91,6 +92,7 @@ const AppContent = () => {
           <Route path="addattendance" element={<GymAttendance />} />
           <Route path="addemployee" element={<AddEmployee />} />
           <Route path="addpackages" element={<AddPackages />} />
+          <Route path="paymenthistory" element={<PaymentHistory />} />
 
           <Route path="settings" element={<Layoutsettings />}>
             <Route

@@ -11,6 +11,7 @@ import {
   User,
   Menu,
   X,
+  IndianRupee,
 } from "lucide-react";
 import logo from "../../assets/flogo.jpg";
 import { Link, useLocation } from "react-router-dom";
@@ -70,6 +71,13 @@ const AdminSidebar = () => {
       icon: Layers,
       label: "Packages",
       description: "Create and manage membership packages",
+      roles: ["admin"], // Admin only
+    },
+    {
+      path: "/admin/paymenthistory",
+      icon: IndianRupee,
+      label: "Payments",
+      description: "View payment history and transactions",
       roles: ["admin"], // Admin only
     },
     {
