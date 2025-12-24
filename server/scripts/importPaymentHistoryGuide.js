@@ -106,7 +106,7 @@ async function importPaymentHistory(paymentsArray) {
   try {
     // First, validate the data
     const validateResponse = await fetch(
-      "http://localhost:5000/api/admin/payment-history/validate-import",
+      "http://localhost:3000/api/admin/payment-history/validate-import",
       {
         method: "POST",
         headers: {
@@ -125,7 +125,7 @@ async function importPaymentHistory(paymentsArray) {
     // If validation passes, proceed with import
     if (validationResult.validationResults.invalid.length === 0) {
       const importResponse = await fetch(
-        "http://localhost:5000/api/admin/payment-history/bulk-import",
+        "http://localhost:3000/api/admin/payment-history/bulk-import",
         {
           method: "POST",
           headers: {
@@ -162,7 +162,7 @@ async function importWithAxios(paymentsArray) {
   try {
     // Validate first
     const validateRes = await axios.post(
-      "http://localhost:5000/api/admin/payment-history/validate-import",
+      "http://localhost:3000/api/admin/payment-history/validate-import",
       { payments: paymentsArray },
       { withCredentials: true }
     );
@@ -172,7 +172,7 @@ async function importWithAxios(paymentsArray) {
     // Import if valid
     if (validateRes.data.validationResults.invalid.length === 0) {
       const importRes = await axios.post(
-        "http://localhost:5000/api/admin/payment-history/bulk-import",
+        "http://localhost:3000/api/admin/payment-history/bulk-import",
         { payments: paymentsArray },
         { withCredentials: true }
       );

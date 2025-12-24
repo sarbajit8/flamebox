@@ -78,7 +78,7 @@ const PaymentHistory = () => {
       });
 
       const response = await axios.get(
-        `http://localhost:5000/api/admin/payment-history?${queryParams}`,
+        `http://localhost:3000/api/admin/payment-history?${queryParams}`,
         { withCredentials: true }
       );
 
@@ -134,7 +134,7 @@ const PaymentHistory = () => {
   const viewPaymentDetails = async (paymentId) => {
     try {
       const response = await axios.get(
-        `http://localhost:5000/api/admin/payment-history/${paymentId}`,
+        `http://localhost:3000/api/admin/payment-history/${paymentId}`,
         { withCredentials: true }
       );
 
@@ -224,7 +224,7 @@ const PaymentHistory = () => {
           setImportLoading(true);
           try {
             const response = await axios.post(
-              "http://localhost:5000/api/admin/payment-history/validate-import",
+              "http://localhost:3000/api/admin/payment-history/validate-import",
               { payments: jsonData },
               { withCredentials: true }
             );
@@ -235,7 +235,11 @@ const PaymentHistory = () => {
             }
           } catch (error) {
             console.error("Auto-validation error:", error);
-            toast.warning("Auto-validation failed, please validate manually");
+            console.error("Error details:", error.response?.data);
+            toast.error(
+              error.response?.data?.message ||
+                "Auto-validation failed, please validate manually"
+            );
           } finally {
             setImportLoading(false);
           }
@@ -256,10 +260,15 @@ const PaymentHistory = () => {
       return;
     }
 
+    console.log("Validating data:", {
+      recordCount: excelData.length,
+      sampleRecord: excelData[0],
+    });
+
     setImportLoading(true);
     try {
       const response = await axios.post(
-        "http://localhost:5000/api/admin/payment-history/validate-import",
+        "http://localhost:3000/api/admin/payment-history/validate-import",
         { payments: excelData },
         { withCredentials: true }
       );
@@ -270,7 +279,8 @@ const PaymentHistory = () => {
       }
     } catch (error) {
       console.error("Validation error:", error);
-      toast.error("Failed to validate data");
+      console.error("Error response:", error.response?.data);
+      toast.error(error.response?.data?.message || "Failed to validate data");
     } finally {
       setImportLoading(false);
     }
@@ -290,16 +300,26 @@ const PaymentHistory = () => {
     setImportLoading(true);
     try {
       const response = await axios.post(
-        "http://localhost:5000/api/admin/payment-history/bulk-import",
+        "http://localhost:3000/api/admin/payment-history/bulk-import",
         { payments: excelData },
         { withCredentials: true }
       );
 
       if (response.data.success) {
         const { results } = response.data;
-        toast.success(
-          `Successfully imported ${results.success.length} out of ${results.total} records`
-        );
+
+        console.log("Import results:", results);
+
+        if (results.failed && results.failed.length > 0) {
+          console.error("Failed records:", results.failed);
+          toast.warning(
+            `Imported ${results.success.length} out of ${results.total}. ${results.failed.length} failed. Check console for details.`
+          );
+        } else {
+          toast.success(
+            `Successfully imported ${results.success.length} out of ${results.total} records`
+          );
+        }
 
         // Reset and refresh
         setIsImportModalOpen(false);
@@ -310,7 +330,8 @@ const PaymentHistory = () => {
       }
     } catch (error) {
       console.error("Import error:", error);
-      toast.error("Failed to import data");
+      console.error("Error response:", error.response?.data);
+      toast.error(error.response?.data?.message || "Failed to import data");
     } finally {
       setImportLoading(false);
     }

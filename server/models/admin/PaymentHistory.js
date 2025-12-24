@@ -102,9 +102,13 @@ const paymentHistorySchema = new mongoose.Schema(
         "Cheque",
         "upi",
         "cash",
+        "card",
+        "net banking",
+        "cheque",
+        "other",
         "Other",
       ],
-      default: "Cash",
+      default: "cash",
     },
     paymentMode: {
       type: String,
@@ -332,19 +336,17 @@ paymentHistorySchema.statics.getRevenueByDateRange = async function (
 // MIDDLEWARE
 // ============================================
 // Auto-generate receipt number before saving
-paymentHistorySchema.pre("save", async function (next) {
+paymentHistorySchema.pre("save", async function () {
   if (this.isNew && !this.receiptNumber) {
     this.receiptNumber = await this.generateReceiptNumber();
   }
-  next();
 });
 
 // Prevent actual deletion - soft delete only
-paymentHistorySchema.pre("remove", function (next) {
+paymentHistorySchema.pre("remove", async function () {
   this.isDeleted = true;
   this.deletedAt = new Date();
-  this.save();
-  next();
+  await this.save();
 });
 
 // ============================================

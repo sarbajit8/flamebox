@@ -16,15 +16,28 @@ const {
 } = require("../../controllers/admin/paymenthistory-import-controller");
 const { authMiddleware } = require("../../middleware/auth");
 
+// Async error wrapper
+const asyncHandler = (fn) => (req, res, next) => {
+  Promise.resolve(fn(req, res, next)).catch(next);
+};
+
 // ============================================
 // PAYMENT HISTORY ROUTES
 // ============================================
 
 // Bulk import from Excel
-router.post("/bulk-import", authMiddleware, bulkImportPaymentHistory);
+router.post(
+  "/bulk-import",
+  authMiddleware,
+  asyncHandler(bulkImportPaymentHistory)
+);
 
 // Validate Excel data before import
-router.post("/validate-import", authMiddleware, validateExcelData);
+router.post(
+  "/validate-import",
+  authMiddleware,
+  asyncHandler(validateExcelData)
+);
 
 // Get all payment history with filters & pagination
 router.get("/", authMiddleware, getAllPaymentHistory);

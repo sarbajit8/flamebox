@@ -187,7 +187,12 @@ const bulkImportPaymentHistory = async (req, res) => {
           error: error.message,
         });
 
-        console.error(`❌ Failed to import record ${i + 1}:`, error.message);
+        console.error(
+          `❌ Failed to import record ${i + 1}:`,
+          payment.Name,
+          error.message
+        );
+        console.error(`   Record data:`, JSON.stringify(payment, null, 2));
       }
     }
 
