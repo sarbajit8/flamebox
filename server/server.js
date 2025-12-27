@@ -20,8 +20,8 @@ app.use(
   })
 );
 
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+app.use(express.json({ limit: "70mb" }));
+app.use(express.urlencoded({ extended: true, limit: "70mb" }));
 app.use(cookieParser());
 
 // Session middleware with MongoDB store for persistence
@@ -92,6 +92,9 @@ app.use("/api/admin/payment-history", paymentHistoryRoutes);
 // Role-based authentication routes
 app.use("/api/auth/users", usersRoutes);
 app.use("/api/auth/trainer", trainerRoutes);
+
+// Serve static files from public directory
+app.use("/public", express.static("public"));
 
 // Test route
 app.get("/api/test", (req, res) => {

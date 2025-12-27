@@ -14,6 +14,7 @@ const packageSchema = new mongoose.Schema(
         "Membership",
         "Personal Training",
         "Group Classes",
+        "Classes",
         "Day Pass",
         "Corporate",
         "Special",

@@ -470,9 +470,19 @@ const Addmember = () => {
       const selectedPackage = packages.find((pkg) => pkg._id === value);
       if (selectedPackage) {
         const amount = selectedPackage.originalPrice;
-        // Store discount type and value for calculation
-        const maxDiscount = selectedPackage.discountedPrice || 0;
+        // Calculate maxDiscount based on discount type
         const discountType = selectedPackage.discountType || "flat";
+        let maxDiscount;
+
+        if (discountType === "percentage") {
+          // For percentage, show the percentage value
+          maxDiscount = Math.round(
+            (selectedPackage.savings / selectedPackage.originalPrice) * 100
+          );
+        } else {
+          // For flat, show the savings amount
+          maxDiscount = selectedPackage.savings || 0;
+        }
 
         setPackageFormData((prev) => {
           const updated = {
@@ -2674,7 +2684,12 @@ const Addmember = () => {
                         durationInDays: durationInDays,
                         amount: packageAmount,
                         discountType: discountType,
-                        maxDiscount: pkg.discountedPrice || 0,
+                        maxDiscount:
+                          discountType === "percentage"
+                            ? Math.round(
+                                (pkg.savings / pkg.originalPrice) * 100
+                              )
+                            : pkg.savings || 0,
                         totalPaid: totalPaid,
                         totalPending: Math.max(0, finalAmount - totalPaid),
                       });

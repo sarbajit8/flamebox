@@ -1,6 +1,8 @@
 const express = require("express");
 const router = express.Router();
 const packagesController = require("../../controllers/admin/packages-controller");
+const packagesImportController = require("../../controllers/admin/packages-import-controller");
+const { upload } = require("../../helpers/cloudinary");
 
 // Test route - add this at the very top
 router.post("/test", (req, res) => {
@@ -9,7 +11,7 @@ router.post("/test", (req, res) => {
   return res.status(200).json({
     success: true,
     message: "Test route works!",
-    body: req.body
+    body: req.body,
   });
 });
 
@@ -47,7 +49,7 @@ router.post("/", (req, res, next) => {
   console.log("🔍 POST / route hit!");
   console.log("Request body:", req.body);
   console.log("Next exists?", typeof next);
-  
+
   // Call the controller
   packagesController.createPackage(req, res);
 });
@@ -69,5 +71,22 @@ router.delete("/:id", packagesController.deletePackage);
 
 // Bulk delete packages
 router.post("/bulk-delete", packagesController.bulkDeletePackages);
+
+// ============================================
+// BULK IMPORT ROUTES
+// ============================================
+
+// Get import template
+router.get("/import/template", packagesImportController.getImportTemplate);
+
+// Bulk import packages from Excel
+router.post("/import/bulk", packagesImportController.bulkImportPackages);
+
+// Upload package image (supports up to 60MB)
+router.post(
+  "/upload/image",
+  upload.single("image"),
+  packagesImportController.uploadPackageImage
+);
 
 module.exports = router;

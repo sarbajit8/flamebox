@@ -30,15 +30,23 @@ const createPackage = async (req, res) => {
       displayOrder,
     } = req.body;
 
-    // Calculate savings based on discount type
+    // Calculate savings and final discounted price based on discount type
     let savings;
+    let finalDiscountedPrice;
+
     if (discountType === "percentage") {
-      // discountedPrice contains percentage value
+      // discountedPrice contains percentage value (e.g., 50 for 50%)
       savings = (originalPrice * discountedPrice) / 100;
+      finalDiscountedPrice = originalPrice - savings;
     } else {
-      // discountType is "flat" - discountedPrice is the final price
-      savings = originalPrice - discountedPrice;
+      // discountType is "flat" - discountedPrice is the savings amount
+      savings = discountedPrice;
+      finalDiscountedPrice = originalPrice - savings;
     }
+
+    // Ensure prices are non-negative
+    if (finalDiscountedPrice < 0) finalDiscountedPrice = 0;
+    if (savings < 0) savings = 0;
 
     // Create package object
     const packageData = {
@@ -48,7 +56,7 @@ const createPackage = async (req, res) => {
       description,
       duration,
       originalPrice,
-      discountedPrice,
+      discountedPrice: finalDiscountedPrice,
       discountType: discountType || "flat",
       freezable: freezable !== undefined ? freezable : false,
       savings,
@@ -278,17 +286,27 @@ const updatePackage = async (req, res) => {
     const { id } = req.params;
     const updateData = req.body;
 
-    // Recalculate savings if prices are updated
+    // Recalculate savings and final discounted price if prices are updated
     if (updateData.originalPrice && updateData.discountedPrice) {
+      let savings;
+      let finalDiscountedPrice;
+
       if (updateData.discountType === "percentage") {
-        // discountedPrice contains percentage value
-        updateData.savings =
-          (updateData.originalPrice * updateData.discountedPrice) / 100;
+        // discountedPrice contains percentage value (e.g., 50 for 50%)
+        savings = (updateData.originalPrice * updateData.discountedPrice) / 100;
+        finalDiscountedPrice = updateData.originalPrice - savings;
       } else {
-        // discountType is "flat" - discountedPrice is the final price
-        updateData.savings =
-          updateData.originalPrice - updateData.discountedPrice;
+        // discountType is "flat" - discountedPrice is the savings amount
+        savings = updateData.discountedPrice;
+        finalDiscountedPrice = updateData.originalPrice - savings;
       }
+
+      // Ensure prices are non-negative
+      if (finalDiscountedPrice < 0) finalDiscountedPrice = 0;
+      if (savings < 0) savings = 0;
+
+      updateData.discountedPrice = finalDiscountedPrice;
+      updateData.savings = savings;
     }
 
     const updatedPackage = await Package.findByIdAndUpdate(id, updateData, {
