@@ -97,6 +97,60 @@ const AddPackages = () => {
     displayOrder: 0,
   });
 
+  console.log("bulkimport data", bulkImportData);
+
+  // Helper function to get field value from Excel data - checks multiple key variations
+  const getExcelFieldValue = (pkg, ...keys) => {
+    if (!pkg) return "";
+
+    // First try direct key matches
+    for (const key of keys) {
+      const value = pkg[key];
+      if (value !== undefined && value !== null) {
+        const trimmed = String(value).trim();
+        if (trimmed !== "") {
+          return trimmed;
+        }
+      }
+    }
+
+    // Try with trimmed keys (in case column names have trailing spaces)
+    const pkgKeys = Object.keys(pkg);
+    for (const key of keys) {
+      const trimmedKey = key.trim();
+      // Find a matching key in pkg
+      for (const pkgKey of pkgKeys) {
+        if (pkgKey.trim() === trimmedKey) {
+          const value = pkg[pkgKey];
+          if (value !== undefined && value !== null) {
+            const trimmed = String(value).trim();
+            if (trimmed !== "") {
+              return trimmed;
+            }
+          }
+        }
+      }
+    }
+
+    // Try case-insensitive matching
+    for (const key of keys) {
+      const normalizedKey = key.trim().toLowerCase();
+      for (const pkgKey of pkgKeys) {
+        if (pkgKey.trim().toLowerCase() === normalizedKey) {
+          const value = pkg[pkgKey];
+          if (value !== undefined && value !== null) {
+            const trimmed = String(value).trim();
+            if (trimmed !== "") {
+              return trimmed;
+            }
+          }
+        }
+      }
+    }
+
+    return "";
+  };
+
   // Fetch available features from backend
   const fetchFeatures = async () => {
     try {
@@ -372,19 +426,44 @@ const AddPackages = () => {
         }
 
         // Trim all keys and values to handle trailing spaces
-        const cleanedData = jsonData.map((row) => {
+        const cleanedData = jsonData.map((row, idx) => {
           const cleanRow = {};
+
+          // Debug: Show raw keys for first row
+          if (idx === 0) {
+            console.log("🔍 RAW KEYS FROM EXCEL (before trimming):");
+            Object.keys(row).forEach((key, i) => {
+              const charCodes = [...key].map((c) => c.charCodeAt(0)).join(",");
+              console.log(
+                `  Raw Key ${i}: "${key}" (charCodes: ${charCodes}) = "${row[key]}"`
+              );
+            });
+          }
+
           Object.keys(row).forEach((key) => {
             const cleanKey = key.trim();
             const value = row[key];
             cleanRow[cleanKey] =
               value === null || value === undefined ? "" : String(value).trim();
           });
+
+          // Debug: Show cleaned keys for first row
+          if (idx === 0) {
+            console.log("✅ CLEANED KEYS (after trimming):");
+            Object.keys(cleanRow).forEach((key, i) => {
+              const charCodes = [...key].map((c) => c.charCodeAt(0)).join(",");
+              console.log(
+                `  Clean Key ${i}: "${key}" (charCodes: ${charCodes}) = "${cleanRow[key]}"`
+              );
+            });
+          }
+
           return cleanRow;
         });
 
         console.log("📊 Parsed Excel data:", cleanedData);
         console.log("📊 First row keys:", Object.keys(cleanedData[0] || {}));
+        console.log("📊 First row data:", cleanedData[0]);
         setBulkImportData(cleanedData);
         // Reset validation when new file is uploaded
         setValidationResults(null);
@@ -431,46 +510,8 @@ const AddPackages = () => {
         console.log(`Row ${rowNumber} keys:`, Object.keys(pkg));
       }
 
-      // Helper function to get field value - checks multiple variations
-      const getFieldValue = (...keys) => {
-        for (const key of keys) {
-          const value = pkg[key];
-          if (value !== undefined && value !== null) {
-            const trimmed = String(value).trim();
-            if (trimmed !== "") {
-              return trimmed;
-            }
-          }
-        }
-        // Also try with trimmed keys (in case column names have trailing spaces)
-        for (const key of keys) {
-          const trimmedKey = key.trim();
-          const value = pkg[trimmedKey];
-          if (value !== undefined && value !== null) {
-            const trimmed = String(value).trim();
-            if (trimmed !== "") {
-              return trimmed;
-            }
-          }
-        }
-        // Try to find keys that match when both are trimmed
-        const pkgKeys = Object.keys(pkg);
-        for (const key of keys) {
-          const normalizedKey = key.trim().toLowerCase();
-          for (const pkgKey of pkgKeys) {
-            if (pkgKey.trim().toLowerCase() === normalizedKey) {
-              const value = pkg[pkgKey];
-              if (value !== undefined && value !== null) {
-                const trimmed = String(value).trim();
-                if (trimmed !== "") {
-                  return trimmed;
-                }
-              }
-            }
-          }
-        }
-        return "";
-      };
+      // Use the component-level helper function for field extraction
+      const getFieldValue = (...keys) => getExcelFieldValue(pkg, ...keys);
 
       // Required field validations
       const packageName = getFieldValue(
@@ -517,15 +558,67 @@ const AddPackages = () => {
 
       // Duration value - handle multiple column name variations
       // Also check for Sessions as an alternative for class-based packages
-      const durationValueRaw = getFieldValue(
-        "Duration value",
-        "Duration_value",
-        "Durationvalue",
-        "durationValue",
-        "duration_value",
-        "duration",
-        "Duration"
-      );
+
+      // Find the actual duration keys by searching all keys
+      const allKeys = Object.keys(pkg);
+
+      // Debug: Show what we're working with for first few rows
+      if (index < 3) {
+        console.log(`\n🔍 Row ${rowNumber} - SEARCHING FOR DURATION:`);
+        console.log(`  Total keys in pkg:`, allKeys.length);
+        console.log(`  All keys:`, allKeys);
+
+        // Show duration-related keys
+        const durationKeys = allKeys.filter((k) =>
+          k.toLowerCase().includes("duration")
+        );
+        console.log(`  Duration-related keys:`, durationKeys);
+        durationKeys.forEach((k) => {
+          console.log(`    "${k}" = "${pkg[k]}"`);
+        });
+      }
+
+      // Try to find duration value key (case-insensitive, flexible matching)
+      let durationValueKey = allKeys.find((k) => {
+        const normalized = k.toLowerCase().replace(/\s+/g, " ").trim();
+        return (
+          normalized === "duration value" ||
+          normalized === "durationvalue" ||
+          normalized === "duration_value"
+        );
+      });
+
+      // Try to find duration unit key
+      let durationUnitKey = allKeys.find((k) => {
+        const normalized = k.toLowerCase().replace(/\s+/g, " ").trim();
+        return (
+          normalized === "duration unit" ||
+          normalized === "durationunit" ||
+          normalized === "duration_unit"
+        );
+      });
+
+      // Debug: Show what keys we found
+      if (index < 3) {
+        console.log(`  ✅ Found durationValueKey: "${durationValueKey}"`);
+        console.log(`  ✅ Found durationUnitKey: "${durationUnitKey}"`);
+        if (durationValueKey) {
+          console.log(`  📌 Duration value: "${pkg[durationValueKey]}"`);
+        }
+        if (durationUnitKey) {
+          console.log(`  📌 Duration unit: "${pkg[durationUnitKey]}"`);
+        }
+      }
+
+      let durationValueRaw = durationValueKey ? pkg[durationValueKey] : "";
+      let durationUnit = durationUnitKey ? pkg[durationUnitKey] : "";
+
+      // Debug: Log final values
+      if (index < 3) {
+        console.log(`  ✅ Final durationValueRaw: "${durationValueRaw}"`);
+        console.log(`  ✅ Final durationUnit: "${durationUnit}"`);
+      }
+
       const sessionsRaw = getFieldValue(
         "Sessions",
         "Session Count",
@@ -543,6 +636,16 @@ const AddPackages = () => {
       const hasSessions =
         sessionsRaw && !isNaN(sessionsValue) && sessionsValue > 0;
 
+      // Debug: Log hasDuration check for first few rows
+      if (index < 3) {
+        console.log(`Row ${rowNumber} - hasDuration check:`, {
+          durationValueRaw,
+          durationValue,
+          isNaN: isNaN(durationValue),
+          hasDuration,
+        });
+      }
+
       // If neither duration nor sessions provided, we'll use defaults (1 Month)
       // This is a WARNING, not an error - we'll apply defaults during import
       if (!hasDuration && !hasSessions) {
@@ -552,15 +655,26 @@ const AddPackages = () => {
         );
       }
 
-      const durationUnit = getFieldValue(
-        "Duration unit",
-        "Duration_unit",
-        "Durationunit",
-        "durationUnit",
-        "duration_unit",
-        "unit",
-        "Unit"
-      );
+      // Validate duration unit if we have a duration value
+      if (!durationUnit && hasDuration) {
+        // Try fallback methods if the dynamic search didn't find it
+        durationUnit = getFieldValue(
+          "Duration unit",
+          "Duration Unit",
+          "Duration_unit",
+          "Durationunit",
+          "durationUnit",
+          "duration_unit",
+          "unit",
+          "Unit"
+        );
+      }
+
+      // Debug: Log duration unit for first few rows
+      if (index < 3) {
+        console.log(`Row ${rowNumber} - Final Duration unit:`, durationUnit);
+      }
+
       // Duration unit validation only if duration value is provided
       if (
         hasDuration &&
@@ -1917,31 +2031,70 @@ const AddPackages = () => {
                         </tr>
                       </thead>
                       <tbody>
-                        {bulkImportData.slice(0, 10).map((pkg, index) => (
-                          <tr key={index} className="border-t border-gray-700">
-                            <td className="px-3 py-2 text-gray-400">
-                              {index + 1}
-                            </td>
-                            <td className="px-3 py-2 text-white">
-                              {pkg["Package Name"] || pkg.packageName || "N/A"}
-                            </td>
-                            <td className="px-3 py-2 text-gray-300">
-                              {pkg["Package Type"] || pkg.packageType || "N/A"}
-                            </td>
-                            <td className="px-3 py-2 text-green-400">
-                              ₹
-                              {pkg["Original Price"] ||
-                                pkg.originalPrice ||
-                                "N/A"}
-                            </td>
-                            <td className="px-3 py-2 text-gray-300">
-                              {pkg["Duration value"] ||
-                                pkg.durationValue ||
-                                "N/A"}{" "}
-                              {pkg["Duration unit"] || pkg.durationUnit || ""}
-                            </td>
-                          </tr>
-                        ))}
+                        {bulkImportData.slice(0, 10).map((pkg, index) => {
+                          // Find duration keys dynamically (same logic as validation)
+                          const allKeys = Object.keys(pkg);
+                          const durationValueKey = allKeys.find((k) => {
+                            const normalized = k
+                              .toLowerCase()
+                              .replace(/\s+/g, " ")
+                              .trim();
+                            return (
+                              normalized === "duration value" ||
+                              normalized === "durationvalue" ||
+                              normalized === "duration_value"
+                            );
+                          });
+                          const durationUnitKey = allKeys.find((k) => {
+                            const normalized = k
+                              .toLowerCase()
+                              .replace(/\s+/g, " ")
+                              .trim();
+                            return (
+                              normalized === "duration unit" ||
+                              normalized === "durationunit" ||
+                              normalized === "duration_unit"
+                            );
+                          });
+
+                          const durationValue = durationValueKey
+                            ? pkg[durationValueKey]
+                            : "";
+                          const durationUnit = durationUnitKey
+                            ? pkg[durationUnitKey]
+                            : "";
+
+                          return (
+                            <tr
+                              key={index}
+                              className="border-t border-gray-700"
+                            >
+                              <td className="px-3 py-2 text-gray-400">
+                                {index + 1}
+                              </td>
+                              <td className="px-3 py-2 text-white">
+                                {pkg["Package Name"] ||
+                                  pkg.packageName ||
+                                  "N/A"}
+                              </td>
+                              <td className="px-3 py-2 text-gray-300">
+                                {pkg["Package Type"] ||
+                                  pkg.packageType ||
+                                  "N/A"}
+                              </td>
+                              <td className="px-3 py-2 text-green-400">
+                                ₹
+                                {pkg["Original Price"] ||
+                                  pkg.originalPrice ||
+                                  "N/A"}
+                              </td>
+                              <td className="px-3 py-2 text-gray-300">
+                                {durationValue || "1"}{" "}
+                                {durationUnit || "Months"}
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                     {bulkImportData.length > 10 && (

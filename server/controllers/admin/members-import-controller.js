@@ -1,0 +1,800 @@
+const Member = require("../../models/admin/Members");
+const Package = require("../../models/admin/Packages");
+const User = require("../../models/auth/Users");
+
+// ============================================
+// HELPER FUNCTION: PARSE DATE IN MULTIPLE FORMATS
+// ============================================
+const parseDate = (dateString) => {
+  if (!dateString || dateString.trim() === "") {
+    return null;
+  }
+
+  const dateStr = dateString.trim();
+
+  // Try ISO format first (YYYY-MM-DD)
+  let date = new Date(dateStr);
+  if (!isNaN(date.getTime())) {
+    return date;
+  }
+
+  // Try DD/MM/YYYY format
+  const ddmmyyyyMatch = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (ddmmyyyyMatch) {
+    const day = parseInt(ddmmyyyyMatch[1], 10);
+    const month = parseInt(ddmmyyyyMatch[2], 10) - 1; // Month is 0-indexed
+    const year = parseInt(ddmmyyyyMatch[3], 10);
+    date = new Date(year, month, day);
+    if (!isNaN(date.getTime())) {
+      return date;
+    }
+  }
+
+  // Try MM/DD/YYYY format
+  const mmddyyyyMatch = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (mmddyyyyMatch) {
+    const month = parseInt(mmddyyyyMatch[1], 10) - 1;
+    const day = parseInt(mmddyyyyMatch[2], 10);
+    const year = parseInt(mmddyyyyMatch[3], 10);
+    date = new Date(year, month, day);
+    if (!isNaN(date.getTime())) {
+      return date;
+    }
+  }
+
+  // Try DD-MM-YYYY format
+  const ddmmyyyyDashMatch = dateStr.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (ddmmyyyyDashMatch) {
+    const day = parseInt(ddmmyyyyDashMatch[1], 10);
+    const month = parseInt(ddmmyyyyDashMatch[2], 10) - 1;
+    const year = parseInt(ddmmyyyyDashMatch[3], 10);
+    date = new Date(year, month, day);
+    if (!isNaN(date.getTime())) {
+      return date;
+    }
+  }
+
+  return null;
+};
+
+// ============================================
+// HELPER FUNCTION: GENERATE REGISTRATION NUMBER
+// ============================================
+const generateRegistrationNumber = async (providedNumber) => {
+  const cleanedNumber = providedNumber
+    ? providedNumber.trim().toUpperCase()
+    : "";
+
+  // Check if it's a placeholder value that should be auto-generated
+  const placeholderValues = ["NOT AVAILABLE", "N/A", "NA", ""];
+  const shouldAutoGenerate =
+    !cleanedNumber || placeholderValues.includes(cleanedNumber);
+
+  // Special case: VISITOR should generate VIS prefix
+  if (cleanedNumber === "VISITOR") {
+    // Find the last VISITOR registration number
+    const lastVisitor = await Member.findOne({
+      registrationNumber: { $regex: /^VIS\d+$/i },
+    }).sort({ registrationNumber: -1 });
+
+    let visitorNumber = "VIS1001";
+    if (lastVisitor && lastVisitor.registrationNumber) {
+      const lastNumber = parseInt(
+        lastVisitor.registrationNumber.replace(/\D/g, "")
+      );
+      if (!isNaN(lastNumber)) {
+        visitorNumber = `VIS${lastNumber + 1}`;
+      }
+    }
+    return visitorNumber;
+  }
+
+  // If valid registration number provided, check for duplicates
+  if (!shouldAutoGenerate) {
+    const existing = await Member.findOne({
+      registrationNumber: cleanedNumber,
+    });
+    if (existing) {
+      throw new Error(`Registration number ${cleanedNumber} already exists`);
+    }
+    return cleanedNumber;
+  }
+
+  // Auto-generate registration number with FLM prefix
+  const lastMember = await Member.findOne({
+    registrationNumber: { $regex: /^FLM\d+$/i },
+  }).sort({ registrationNumber: -1 });
+
+  let registrationNumber = "FLM1001";
+
+  if (lastMember && lastMember.registrationNumber) {
+    const lastNumber = parseInt(
+      lastMember.registrationNumber.replace(/\D/g, "")
+    );
+    if (!isNaN(lastNumber)) {
+      registrationNumber = `FLM${lastNumber + 1}`;
+    }
+  }
+
+  return registrationNumber;
+};
+
+// ============================================
+// HELPER FUNCTION: CALCULATE END DATE
+// ============================================
+const calculateEndDate = (startDate, durationValue, durationUnit) => {
+  const endDate = new Date(startDate);
+
+  switch (durationUnit) {
+    case "Days":
+      endDate.setDate(endDate.getDate() + durationValue);
+      break;
+    case "Weeks":
+      endDate.setDate(endDate.getDate() + durationValue * 7);
+      break;
+    case "Months":
+      endDate.setMonth(endDate.getMonth() + durationValue);
+      break;
+    case "Years":
+      endDate.setFullYear(endDate.getFullYear() + durationValue);
+      break;
+    default:
+      endDate.setMonth(endDate.getMonth() + durationValue);
+  }
+
+  return endDate;
+};
+
+// ============================================
+// VALIDATE BULK MEMBERS DATA (NEW ENDPOINT)
+// ============================================
+const validateBulkMembers = async (req, res) => {
+  try {
+    const { members } = req.body;
+
+    if (!members || !Array.isArray(members) || members.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide an array of member records",
+      });
+    }
+
+    console.log(`🔍 Validating ${members.length} member records...`);
+
+    const validationResults = [];
+    const validMembers = [];
+    const invalidMembers = [];
+
+    // Fetch all packages and trainers once
+    const allPackages = await Package.find({ isActive: true });
+    const allTrainers = await User.find({
+      role: "trainer",
+      isActive: true,
+    }).select("_id fullName email phoneNumber");
+
+    for (let i = 0; i < members.length; i++) {
+      const memberData = members[i];
+      const rowNumber = i + 2; // Excel row number (header is row 1)
+      const errors = [];
+      const warnings = [];
+
+      try {
+        // Extract fields
+        const registrationNumber =
+          memberData["Registration Number"] ||
+          memberData["registrationNumber"] ||
+          "";
+        const memberJoiningDate =
+          memberData["Member Joining Date"] ||
+          memberData["memberJoiningDate"] ||
+          "";
+        const fullName =
+          memberData["Full Name"] || memberData["fullName"] || "";
+        const phone = memberData["Phone"] || memberData["phone"] || "";
+        const packageName =
+          memberData["Package"] || memberData["package"] || "";
+        const packageStartDate =
+          memberData["package start date"] ||
+          memberData["packageStartDate"] ||
+          "";
+        const trainerId =
+          memberData["trainer"] || memberData["trainerId"] || "";
+        const lastUpdateDate =
+          memberData["last update date"] || memberData["lastUpdateDate"] || "";
+        const status = memberData["status"] || memberData["Status"] || "";
+
+        // Validate required fields
+        if (!fullName || fullName.trim() === "") {
+          errors.push("Full Name is required");
+        }
+        if (!phone || phone.trim() === "") {
+          errors.push("Phone is required");
+        }
+        if (!packageName || packageName.trim() === "") {
+          errors.push("Package is required");
+        }
+        if (!packageStartDate) {
+          errors.push("Package start date is required");
+        }
+        if (!status || status.trim() === "") {
+          errors.push("Status is required");
+        }
+
+        // Validate registration number (if provided, check for duplicates)
+        if (registrationNumber && registrationNumber.trim() !== "") {
+          const existing = await Member.findOne({
+            registrationNumber: registrationNumber.trim().toUpperCase(),
+          });
+          if (existing) {
+            errors.push(
+              `Registration number ${registrationNumber} already exists`
+            );
+          }
+        } else {
+          warnings.push("Registration number will be auto-generated");
+        }
+
+        // Validate package exists - more flexible matching
+        let packageDoc = null;
+        if (packageName) {
+          const cleanPackageName = packageName.trim().replace(/\s+/g, " ");
+
+          // Try exact match first (case-insensitive)
+          packageDoc = allPackages.find(
+            (p) =>
+              p.packageName.trim().toLowerCase() ===
+              cleanPackageName.toLowerCase()
+          );
+
+          // If not found, try matching without special characters
+          if (!packageDoc) {
+            const simplifiedName = cleanPackageName
+              .replace(/[^\w\s]/g, "")
+              .trim();
+            packageDoc = allPackages.find((pkg) => {
+              const pkgSimplified = pkg.packageName
+                .replace(/[^\w\s]/g, "")
+                .trim();
+              return (
+                pkgSimplified.toLowerCase() === simplifiedName.toLowerCase()
+              );
+            });
+          }
+
+          if (!packageDoc) {
+            const availableNames = allPackages
+              .slice(0, 3)
+              .map((p) => p.packageName)
+              .join(", ");
+            errors.push(
+              `Package "${packageName}" not found. Available: ${availableNames}...`
+            );
+          }
+        }
+
+        // Validate trainer (if provided)
+        if (trainerId && trainerId.trim() !== "") {
+          const trainer = allTrainers.find(
+            (t) => t._id.toString() === trainerId.trim()
+          );
+          if (!trainer) {
+            errors.push(`Trainer with ID "${trainerId}" not found`);
+          }
+        } else {
+          warnings.push("No trainer assigned");
+        }
+
+        // Validate dates
+        if (memberJoiningDate) {
+          const joiningDate = parseDate(memberJoiningDate);
+          if (!joiningDate) {
+            errors.push(`Invalid Member Joining Date: ${memberJoiningDate}`);
+          }
+        }
+
+        if (packageStartDate) {
+          const startDate = parseDate(packageStartDate);
+          if (!startDate) {
+            errors.push(`Invalid Package start date: ${packageStartDate}`);
+          }
+        }
+
+        // Validate status
+        const validStatuses = ["active", "inactive"];
+        if (status && !validStatuses.includes(status.toLowerCase())) {
+          errors.push(
+            `Invalid status: ${status}. Must be "Active" or "Inactive"`
+          );
+        }
+
+        // Check if phone already exists
+        if (phone && phone.trim() !== "") {
+          const existingMember = await Member.findOne({
+            phoneNumber: phone.trim(),
+          });
+          if (existingMember) {
+            warnings.push(
+              `Phone number already exists for member: ${existingMember.fullName} (Reg: ${existingMember.registrationNumber}). Package will be added to existing member.`
+            );
+          }
+        }
+
+        if (errors.length > 0) {
+          invalidMembers.push({
+            row: rowNumber,
+            fullName: fullName || "Unknown",
+            phone: phone || "N/A",
+            errors,
+            warnings,
+            data: memberData,
+          });
+        } else {
+          validMembers.push({
+            row: rowNumber,
+            fullName,
+            phone,
+            package: packageName,
+            warnings,
+            data: memberData,
+          });
+        }
+      } catch (error) {
+        invalidMembers.push({
+          row: rowNumber,
+          fullName: memberData["Full Name"] || "Unknown",
+          errors: [error.message],
+          warnings: [],
+          data: memberData,
+        });
+      }
+    }
+
+    const summary = {
+      total: members.length,
+      valid: validMembers.length,
+      invalid: invalidMembers.length,
+    };
+
+    console.log(`✅ Validation completed:`, summary);
+
+    res.status(200).json({
+      success: true,
+      message: "Validation completed",
+      summary,
+      validMembers,
+      invalidMembers,
+    });
+  } catch (error) {
+    console.error("❌ Validation error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error validating members",
+      error: error.message,
+    });
+  }
+};
+
+// ============================================
+// BULK IMPORT MEMBERS FROM EXCEL
+// ============================================
+const bulkImportMembers = async (req, res) => {
+  try {
+    const { members } = req.body;
+
+    if (!members || !Array.isArray(members) || members.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide an array of member records",
+      });
+    }
+
+    console.log(`📥 Importing ${members.length} member records...`);
+
+    const results = {
+      success: [],
+      failed: [],
+      total: members.length,
+    };
+
+    // Fetch all trainers once for efficiency
+    const allTrainers = await User.find({
+      role: "trainer",
+      isActive: true,
+    }).select("_id fullName email phoneNumber");
+
+    for (let i = 0; i < members.length; i++) {
+      const memberData = members[i];
+
+      try {
+        // Extract fields with multiple possible field names
+        const registrationNumber =
+          memberData["Registration Number"] ||
+          memberData["registrationNumber"] ||
+          "";
+        const memberJoiningDateRaw =
+          memberData["Member Joining Date"] ||
+          memberData["memberJoiningDate"] ||
+          "";
+        const fullName =
+          memberData["Full Name"] || memberData["fullName"] || "";
+        const phone = memberData["Phone"] || memberData["phone"] || "";
+        const packageName =
+          memberData["Package"] || memberData["package"] || "";
+        const packageStartDateRaw =
+          memberData["package start date"] ||
+          memberData["packageStartDate"] ||
+          "";
+        const trainerId =
+          memberData["trainer"] || memberData["trainerId"] || "";
+        const lastUpdateDateRaw =
+          memberData["last update date"] || memberData["lastUpdateDate"] || "";
+        const status = (
+          memberData["status"] ||
+          memberData["Status"] ||
+          "Active"
+        ).trim();
+
+        // Validate required fields
+        if (!fullName || fullName.trim() === "") {
+          throw new Error("Full Name is required");
+        }
+        if (!phone || phone.trim() === "") {
+          throw new Error("Phone is required");
+        }
+        if (!packageName || packageName.trim() === "") {
+          throw new Error("Package is required");
+        }
+        if (!packageStartDateRaw) {
+          throw new Error("Package start date is required");
+        }
+
+        // Find the package by name - more flexible matching
+        const cleanPackageName = packageName.trim().replace(/\s+/g, " ");
+
+        // Try exact match first
+        let packageDoc = await Package.findOne({
+          packageName: {
+            $regex: new RegExp(
+              `^${cleanPackageName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
+              "i"
+            ),
+          },
+        });
+
+        // If not found, try matching without special characters
+        if (!packageDoc) {
+          const simplifiedName = cleanPackageName
+            .replace(/[^\w\s]/g, "")
+            .trim();
+          const allPackages = await Package.find({ isActive: true });
+
+          packageDoc = allPackages.find((pkg) => {
+            const pkgSimplified = pkg.packageName
+              .replace(/[^\w\s]/g, "")
+              .trim();
+            return pkgSimplified.toLowerCase() === simplifiedName.toLowerCase();
+          });
+        }
+
+        if (!packageDoc) {
+          // Get all available package names for better error message
+          const availablePackages = await Package.find({ isActive: true })
+            .select("packageName")
+            .limit(5);
+          const packageList = availablePackages
+            .map((p) => p.packageName)
+            .join(", ");
+          throw new Error(
+            `Package "${packageName}" not found. Available packages: ${packageList}${
+              availablePackages.length >= 5 ? ", ..." : ""
+            }`
+          );
+        }
+
+        // Parse package start date
+        const packageStartDate = parseDate(packageStartDateRaw);
+        if (!packageStartDate) {
+          throw new Error(`Invalid Package start date: ${packageStartDateRaw}`);
+        }
+
+        // Parse member joining date (use package start date if not provided)
+        const memberJoiningDate = memberJoiningDateRaw
+          ? parseDate(memberJoiningDateRaw)
+          : packageStartDate;
+
+        if (!memberJoiningDate) {
+          throw new Error(
+            `Invalid Member Joining Date: ${memberJoiningDateRaw}`
+          );
+        }
+
+        // Calculate end date based on package duration and start date
+        const packageEndDate = calculateEndDate(
+          packageStartDate,
+          packageDoc.duration.value,
+          packageDoc.duration.unit
+        );
+
+        // Get full package price (no discount, full payment)
+        const packagePrice =
+          packageDoc.discountedPrice || packageDoc.originalPrice;
+        const finalAmount = packagePrice;
+        const totalPaid = packagePrice; // Full payment in cash
+        const totalPending = 0;
+        const paymentStatus = "Paid";
+        const paymentMethod = "Cash";
+
+        // Generate or validate registration number
+        const genRegistrationNumber = await generateRegistrationNumber(
+          registrationNumber
+        );
+
+        // Find trainer details if trainer ID is provided
+        let trainerDetails = null;
+        if (trainerId && trainerId.trim() !== "") {
+          trainerDetails = allTrainers.find(
+            (t) => t._id.toString() === trainerId.trim()
+          );
+          if (!trainerDetails) {
+            throw new Error(`Trainer with ID "${trainerId}" not found`);
+          }
+        }
+
+        // Parse last update date (use current date if not provided)
+        const lastUpdate = lastUpdateDateRaw
+          ? parseDate(lastUpdateDateRaw)
+          : new Date();
+
+        // Validate and normalize status
+        const memberStatus =
+          status.toLowerCase() === "active" ? "Active" : "Inactive";
+
+        // Check if member with this phone already exists
+        const existingMember = await Member.findOne({
+          phoneNumber: phone.trim(),
+        });
+
+        if (existingMember) {
+          // Member exists, add package to existing member
+          const newPackage = {
+            packageId: packageDoc._id,
+            packageName: packageDoc.packageName,
+            packageType: packageDoc.packageType,
+            startDate: packageStartDate,
+            endDate: packageEndDate,
+            amount: packagePrice,
+            discount: 0,
+            discountType: "flat",
+            finalAmount,
+            totalPaid,
+            totalPending,
+            paymentStatus,
+            paymentMethod,
+            paymentDate: packageStartDate,
+            packageStatus:
+              packageStartDate <= new Date() ? "Active" : "Upcoming",
+            isPrimary: existingMember.packages.length === 0,
+            autoRenew: false,
+          };
+
+          existingMember.packages.push(newPackage);
+
+          // Update trainer if provided
+          if (trainerDetails) {
+            existingMember.assignedTrainer = trainerDetails._id;
+          }
+
+          // Update payment summary
+          existingMember.totalPaid =
+            (existingMember.totalPaid || 0) + totalPaid;
+          existingMember.totalPending =
+            (existingMember.totalPending || 0) + totalPending;
+
+          // Update status
+          existingMember.status = memberStatus;
+
+          await existingMember.save();
+
+          results.success.push({
+            row: i + 2,
+            fullName,
+            action: "package_added",
+            registrationNumber: existingMember.registrationNumber,
+            id: existingMember._id,
+            message: `Added package to existing member (Reg: ${existingMember.registrationNumber})`,
+          });
+
+          console.log(
+            `✅ Row ${
+              i + 2
+            }: Added package to existing member "${fullName}" (Reg: ${
+              existingMember.registrationNumber
+            })`
+          );
+        } else {
+          // Create new member
+          const newMemberData = {
+            registrationNumber: genRegistrationNumber,
+            fullName: fullName.trim(),
+            phoneNumber: phone.trim(),
+            alternatePhone: "",
+            gender: "Prefer not to say",
+            joiningDate: memberJoiningDate,
+            status: memberStatus,
+            packages: [
+              {
+                packageId: packageDoc._id,
+                packageName: packageDoc.packageName,
+                packageType: packageDoc.packageType,
+                startDate: packageStartDate,
+                endDate: packageEndDate,
+                amount: packagePrice,
+                discount: 0,
+                discountType: "flat",
+                finalAmount,
+                totalPaid,
+                totalPending,
+                paymentStatus,
+                paymentMethod,
+                paymentDate: packageStartDate,
+                packageStatus:
+                  packageStartDate <= new Date() ? "Active" : "Upcoming",
+                isPrimary: true,
+                autoRenew: false,
+              },
+            ],
+            totalPaid,
+            totalPending,
+          };
+
+          // Add trainer if provided
+          if (trainerDetails) {
+            newMemberData.assignedTrainer = trainerDetails._id;
+          }
+
+          const newMember = new Member(newMemberData);
+          await newMember.save();
+
+          results.success.push({
+            row: i + 2,
+            fullName,
+            action: "created",
+            registrationNumber: genRegistrationNumber,
+            id: newMember._id,
+            message: `Successfully created member (Reg: ${genRegistrationNumber})`,
+          });
+
+          console.log(
+            `✅ Row ${
+              i + 2
+            }: Created member "${fullName}" (Reg: ${genRegistrationNumber})`
+          );
+        }
+      } catch (error) {
+        console.error(`❌ Row ${i + 2}: ${error.message}`);
+        results.failed.push({
+          row: i + 2,
+          fullName: memberData["Full Name"] || memberData.fullName || "Unknown",
+          error: error.message,
+        });
+      }
+    }
+
+    // Prepare summary
+    const summary = {
+      total: results.total,
+      successful: results.success.length,
+      failed: results.failed.length,
+      created: results.success.filter((r) => r.action === "created").length,
+      updated: results.success.filter((r) => r.action === "package_added")
+        .length,
+    };
+
+    console.log(`\n📊 Import Summary:`, summary);
+
+    res.status(200).json({
+      success: true,
+      message: `Import completed: ${summary.successful} successful, ${summary.failed} failed`,
+      results: {
+        successful: results.success,
+        failed: results.failed,
+      },
+      summary,
+    });
+  } catch (error) {
+    console.error("❌ Bulk import error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error importing members",
+      error: error.message,
+    });
+  }
+};
+
+// ============================================
+// GENERATE IMPORT TEMPLATE
+// ============================================
+const generateImportTemplate = async (req, res) => {
+  try {
+    // Get all active packages and trainers
+    const packages = await Package.find({ isActive: true, status: "Active" })
+      .select("packageName duration originalPrice discountedPrice")
+      .limit(10);
+
+    const trainers = await User.find({ role: "trainer", isActive: true })
+      .select("_id fullName")
+      .limit(10);
+
+    const packageNames = packages.map((p) => p.packageName).join(", ");
+    const trainerInfo = trainers
+      .map((t) => `${t._id} (${t.fullName})`)
+      .join(", ");
+
+    const template = [
+      {
+        "Registration Number": "",
+        "Member Joining Date": "2025-01-01",
+        "Full Name": "John Doe",
+        Phone: "9876543210",
+        Package: "FB Fitness Fantasia 2024 Yearly",
+        "package start date": "2025-01-01",
+        trainer: "",
+        "last update date": "2025-01-01",
+        status: "Active",
+      },
+    ];
+
+    const instructions = {
+      "Registration Number":
+        "Optional. Leave empty to auto-generate (format: FLM1001, FLM1002, etc.). If provided, must be unique.",
+      "Member Joining Date":
+        "Optional. Format: YYYY-MM-DD or DD/MM/YYYY. Defaults to package start date if not provided.",
+      "Full Name": "Required. Member's full name.",
+      Phone:
+        "Required. Member's phone number (must be unique). If phone exists, package will be added to existing member.",
+      Package: `Required. Exact package name. Available: ${
+        packageNames || "Check your packages list"
+      }`,
+      "package start date":
+        "Required. Format: YYYY-MM-DD or DD/MM/YYYY. Package end date will be calculated automatically based on package duration.",
+      trainer: `Optional. Trainer ID (not name). Available trainer IDs: ${
+        trainerInfo || "No trainers available"
+      }`,
+      "last update date":
+        "Optional. Format: YYYY-MM-DD. Defaults to current date.",
+      status: "Required. Either 'Active' or 'Inactive' (case-insensitive).",
+    };
+
+    const notes = [
+      "💡 Payment: Full package amount will be automatically marked as PAID in CASH",
+      "💡 Package End Date: Automatically calculated based on package duration",
+      "💡 Registration Number: Auto-generated if not provided (FLM1001, FLM1002, etc.)",
+      "💡 Existing Members: If phone number exists, new package will be added to that member",
+      "💡 Trainer: Provide only the Trainer ID (MongoDB ObjectId), not the name",
+      "💡 Validation: Use the 'Validate Data' button before importing",
+      "💡 Large Files: System can handle 1500+ rows at once",
+    ];
+
+    res.status(200).json({
+      success: true,
+      template,
+      instructions,
+      notes,
+      availablePackages: packageNames,
+      availableTrainers: trainerInfo,
+    });
+  } catch (error) {
+    console.error("Error generating template:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error generating template",
+      error: error.message,
+    });
+  }
+};
+
+module.exports = {
+  bulkImportMembers,
+  generateImportTemplate,
+  validateBulkMembers,
+};

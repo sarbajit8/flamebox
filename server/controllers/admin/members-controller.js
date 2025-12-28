@@ -514,6 +514,7 @@ const updateMember = async (req, res) => {
       "emergencyContact",
       "photo",
       "cprNumber",
+      "joiningDate",
       "vaccinationStatus",
       "vaccinationDetails",
       "medicalConditions",

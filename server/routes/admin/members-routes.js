@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const membersController = require("../../controllers/admin/members-controller");
+const membersImportController = require("../../controllers/admin/members-import-controller");
 const {
   authMiddleware,
   requireAdmin,
@@ -18,6 +19,30 @@ router.post(
 
 // Apply authentication to all routes below
 router.use(authMiddleware);
+
+// ============================================
+// BULK IMPORT ROUTES (ADMIN ONLY)
+// ============================================
+// Validate bulk members data
+router.post(
+  "/import/validate",
+  requireAdmin,
+  membersImportController.validateBulkMembers
+);
+
+// Bulk import members from Excel
+router.post(
+  "/import/bulk",
+  requireAdmin,
+  membersImportController.bulkImportMembers
+);
+
+// Get import template
+router.get(
+  "/import/template",
+  requireAdmin,
+  membersImportController.generateImportTemplate
+);
 
 // ============================================
 // MEMBER INFORMATION ROUTES

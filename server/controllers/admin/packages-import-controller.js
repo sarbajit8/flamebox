@@ -27,6 +27,16 @@ const bulkImportPackages = async (req, res) => {
       const pkg = packages[i];
 
       try {
+        // Debug: Log the raw package data and keys
+        if (i < 3) {
+          console.log(`\n🔍 Row ${i + 1} - Raw package data:`, pkg);
+          console.log(`🔑 Row ${i + 1} - Available keys:`, Object.keys(pkg));
+          console.log(
+            `🔑 Row ${i + 1} - Duration keys:`,
+            Object.keys(pkg).filter((k) => k.toLowerCase().includes("duration"))
+          );
+        }
+
         // Clean and validate required fields
         const packageName = pkg["Package Name"] || pkg.packageName;
         let packageType =
@@ -36,14 +46,50 @@ const bulkImportPackages = async (req, res) => {
         const packageCategory =
           pkg["Package Category"] || pkg.category || "Basic";
 
-        // Duration - use defaults if not provided (1 Month)
-        const durationValueRaw =
-          pkg["Duration value"] || pkg.durationValue || pkg["Duration"];
-        let durationValue = parseInt(durationValueRaw);
+        // Duration - Find keys dynamically to handle any variations
+        const allKeys = Object.keys(pkg);
+        const durationValueKey = allKeys.find((k) => {
+          const normalized = k.toLowerCase().replace(/\s+/g, " ").trim();
+          return (
+            normalized === "duration value" ||
+            normalized === "durationvalue" ||
+            normalized === "duration_value"
+          );
+        });
+        const durationUnitKey = allKeys.find((k) => {
+          const normalized = k.toLowerCase().replace(/\s+/g, " ").trim();
+          return (
+            normalized === "duration unit" ||
+            normalized === "durationunit" ||
+            normalized === "duration_unit"
+          );
+        });
 
-        const durationUnitRaw =
-          pkg["Duration unit"] || pkg.durationUnit || pkg["Unit"];
+        const durationValueRaw = durationValueKey ? pkg[durationValueKey] : "";
+        const durationUnitRaw = durationUnitKey ? pkg[durationUnitKey] : "";
+
+        let durationValue = parseInt(durationValueRaw);
         let durationUnit = String(durationUnitRaw || "").trim();
+
+        // Debug duration values for first few rows
+        if (i < 3) {
+          console.log(
+            `📊 Row ${i + 1} - Found durationValueKey: "${durationValueKey}"`
+          );
+          console.log(
+            `📊 Row ${i + 1} - Duration value raw:`,
+            durationValueRaw
+          );
+          console.log(
+            `📊 Row ${i + 1} - Duration value parsed:`,
+            durationValue
+          );
+          console.log(
+            `📊 Row ${i + 1} - Found durationUnitKey: "${durationUnitKey}"`
+          );
+          console.log(`📊 Row ${i + 1} - Duration unit raw:`, durationUnitRaw);
+          console.log(`📊 Row ${i + 1} - Duration unit parsed:`, durationUnit);
+        }
 
         // Apply defaults if duration is missing or invalid
         if (
@@ -53,7 +99,7 @@ const bulkImportPackages = async (req, res) => {
           durationValue <= 0
         ) {
           durationValue = 1; // Default to 1
-          console.log(`Row ${i + 1}: Using default duration value: 1`);
+          console.log(`⚠️  Row ${i + 1}: Using default duration value: 1`);
         }
         if (
           !durationUnit ||
@@ -61,7 +107,7 @@ const bulkImportPackages = async (req, res) => {
           !["Days", "Weeks", "Months", "Years"].includes(durationUnit)
         ) {
           durationUnit = "Months"; // Default to Months
-          console.log(`Row ${i + 1}: Using default duration unit: Months`);
+          console.log(`⚠️  Row ${i + 1}: Using default duration unit: Months`);
         }
 
         const originalPrice = parseFloat(

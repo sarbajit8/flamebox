@@ -24,6 +24,11 @@ import {
   Package as PackageIcon,
   IndianRupee,
   ChevronRight,
+  Upload,
+  FileSpreadsheet,
+  Download,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
 import {
   fetchAllMembers,
@@ -37,6 +42,7 @@ import {
 } from "../../store/admin/members-slice";
 import { fetchAllPackages } from "../../store/admin/packages-slice";
 import { toast } from "sonner";
+import * as XLSX from "xlsx";
 
 const Addmember = () => {
   const dispatch = useDispatch();
@@ -68,6 +74,10 @@ const Addmember = () => {
     paymentStatus: "Pending",
   });
   const [originalMemberData, setOriginalMemberData] = useState(null);
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [membersPerPage, setMembersPerPage] = useState(50);
 
   // Renew package states
   const [isRenewModalOpen, setIsRenewModalOpen] = useState(false);
@@ -138,6 +148,15 @@ const Addmember = () => {
   const [documentFiles, setDocumentFiles] = useState([]);
   const [isUploading, setIsUploading] = useState(false);
 
+  // Bulk Import States
+  const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
+  const [bulkImportFile, setBulkImportFile] = useState(null);
+  const [bulkImportData, setBulkImportData] = useState([]);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importResults, setImportResults] = useState(null);
+  const [validationResults, setValidationResults] = useState(null);
+  const [isValidating, setIsValidating] = useState(false);
+
   const [formData, setFormData] = useState({
     registrationNumber: "",
     fullName: "",
@@ -162,6 +181,7 @@ const Addmember = () => {
     bloodGroup: "Unknown",
     salesRepresentative: "",
     notes: "",
+    joiningDate: new Date().toISOString().split("T")[0],
     packages: [],
     totalPaid: 0,
     totalPending: 0,
@@ -189,7 +209,7 @@ const Addmember = () => {
 
   // Fetch members and packages on component mount
   useEffect(() => {
-    dispatch(fetchAllMembers({ page: 1, limit: 10 }));
+    dispatch(fetchAllMembers({ page: currentPage, limit: membersPerPage }));
     dispatch(fetchMemberStatistics());
     dispatch(fetchAllPackages());
 
@@ -214,7 +234,33 @@ const Addmember = () => {
         }
       })
       .catch((err) => console.error("Failed to fetch trainers:", err));
-  }, [dispatch]);
+  }, [dispatch, currentPage, membersPerPage]);
+
+  // Helper function to get Excel field value
+  const getExcelFieldValue = (pkg, ...keys) => {
+    if (!pkg) return "";
+    const allKeys = Object.keys(pkg);
+
+    // Try direct key match first
+    for (const key of keys) {
+      const value = pkg[key];
+      if (value !== undefined && value !== null) {
+        const trimmed = String(value).trim();
+        if (trimmed !== "") return trimmed;
+      }
+    }
+
+    // Try case-insensitive match
+    const foundKey = allKeys.find((k) => {
+      const normalized = k.toLowerCase().replace(/\s+/g, " ").trim();
+      return keys.some(
+        (searchKey) =>
+          normalized === searchKey.toLowerCase().replace(/\s+/g, " ").trim()
+      );
+    });
+
+    return foundKey ? pkg[foundKey] : "";
+  };
 
   // Handle success/error messages
   useEffect(() => {
@@ -223,7 +269,7 @@ const Addmember = () => {
       dispatch(clearSuccess());
       setIsDrawerOpen(false);
       resetForm();
-      dispatch(fetchAllMembers({ page: 1, limit: 10 }));
+      dispatch(fetchAllMembers({ page: currentPage, limit: membersPerPage }));
       dispatch(fetchMemberStatistics());
     }
   }, [success, message, dispatch]);
@@ -322,11 +368,51 @@ const Addmember = () => {
     return `${year}-${month}-${day}`;
   };
 
+  // Helper function to convert DD/MM/YYYY dates to ISO format for database
+  const convertDatesToISO = (data) => {
+    const convertedData = { ...data };
+
+    // Convert main date fields
+    if (convertedData.dateOfBirth) {
+      const isoDate = parseDateFromDisplay(convertedData.dateOfBirth);
+      convertedData.dateOfBirth = isoDate || null;
+    }
+
+    if (convertedData.joiningDate) {
+      const isoDate = parseDateFromDisplay(convertedData.joiningDate);
+      convertedData.joiningDate =
+        isoDate || new Date().toISOString().split("T")[0];
+    }
+
+    if (convertedData.paymentDate) {
+      const isoDate = parseDateFromDisplay(convertedData.paymentDate);
+      convertedData.paymentDate = isoDate || null;
+    }
+
+    // Convert package dates
+    if (convertedData.packages && Array.isArray(convertedData.packages)) {
+      convertedData.packages = convertedData.packages.map((pkg) => ({
+        ...pkg,
+        startDate: pkg.startDate
+          ? parseDateFromDisplay(pkg.startDate) || pkg.startDate
+          : null,
+        endDate: pkg.endDate
+          ? parseDateFromDisplay(pkg.endDate) || pkg.endDate
+          : null,
+        paymentDate: pkg.paymentDate
+          ? parseDateFromDisplay(pkg.paymentDate) || pkg.paymentDate
+          : null,
+      }));
+    }
+
+    return convertedData;
+  };
+
   const handleInputChange = (e) => {
     const { name, value } = e.target;
 
     // Handle date inputs - convert from YYYY-MM-DD to DD/MM/YYYY
-    if (name === "dateOfBirth") {
+    if (name === "dateOfBirth" || name === "joiningDate") {
       const formattedValue = formatDateForDisplay(value);
       setFormData((prev) => ({
         ...prev,
@@ -716,12 +802,11 @@ const Addmember = () => {
       }
 
       // Prepare data for submission
-      const memberData = {
+      const memberData = convertDatesToISO({
         ...formData,
         photo: photoUrl,
         documents: documentsArray,
-        dateOfBirth: formData.dateOfBirth || null,
-      };
+      });
 
       if (editMode && currentMemberId) {
         const result = await dispatch(
@@ -782,6 +867,9 @@ const Addmember = () => {
       bloodGroup: member.bloodGroup || "Unknown",
       salesRepresentative: member.salesRepresentative || "",
       notes: member.notes || "",
+      joiningDate: member.joiningDate
+        ? member.joiningDate.split("T")[0]
+        : new Date().toISOString().split("T")[0],
       packages: member.packages || [],
       totalPaid: member.totalPaid || 0,
       totalPending: member.totalPending || 0,
@@ -816,6 +904,9 @@ const Addmember = () => {
       bloodGroup: member.bloodGroup || "Unknown",
       salesRepresentative: member.salesRepresentative || "",
       notes: member.notes || "",
+      joiningDate: member.joiningDate
+        ? member.joiningDate.split("T")[0]
+        : new Date().toISOString().split("T")[0],
       packages: member.packages || [],
       totalPaid: member.totalPaid || 0,
       totalPending: member.totalPending || 0,
@@ -865,6 +956,237 @@ const Addmember = () => {
         limit: 10,
       })
     );
+  };
+
+  // Bulk Import Functions
+  const handleFileSelect = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const validTypes = [
+      "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ];
+
+    if (
+      !validTypes.includes(file.type) &&
+      !file.name.endsWith(".xlsx") &&
+      !file.name.endsWith(".xls")
+    ) {
+      alert("Please select a valid Excel file (.xlsx or .xls)");
+      return;
+    }
+
+    setBulkImportFile(file);
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = new Uint8Array(event.target.result);
+        const workbook = XLSX.read(data, { type: "array" });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, {
+          defval: "",
+          raw: false,
+        });
+
+        if (jsonData.length === 0) {
+          alert("The Excel file is empty");
+          return;
+        }
+
+        const cleanedData = jsonData.map((row) => {
+          const cleanRow = {};
+          Object.keys(row).forEach((key) => {
+            const cleanKey = key.trim();
+            const value = row[key];
+            cleanRow[cleanKey] =
+              value === null || value === undefined ? "" : String(value).trim();
+          });
+          return cleanRow;
+        });
+
+        console.log("📊 Parsed Excel data:", cleanedData);
+        setBulkImportData(cleanedData);
+        setValidationResults(null);
+      } catch (error) {
+        console.error("Error parsing Excel file:", error);
+        alert("Error parsing Excel file. Please ensure it's a valid format.");
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  const validateMembers = async () => {
+    if (bulkImportData.length === 0) {
+      alert("Please select a file first");
+      return;
+    }
+
+    setIsValidating(true);
+
+    try {
+      const response = await fetch(
+        `${
+          import.meta.env.VITE_API_BASE_URL || "http://localhost:3000"
+        }/api/members/import/validate`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ members: bulkImportData }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (result.success) {
+        setValidationResults({
+          total: result.summary.total,
+          valid: result.summary.valid,
+          invalid: result.summary.invalid,
+          validMembers: result.validMembers,
+          invalidMembers: result.invalidMembers,
+        });
+
+        if (result.summary.invalid === 0) {
+          toast.success(
+            `All ${result.summary.valid} records are valid! Ready to import.`
+          );
+        } else {
+          toast.warning(
+            `${result.summary.valid} valid, ${result.summary.invalid} invalid records found`
+          );
+        }
+      } else {
+        toast.error("Validation failed: " + result.message);
+      }
+    } catch (error) {
+      console.error("Error validating members:", error);
+      toast.error("Error validating members. Please try again.");
+    } finally {
+      setIsValidating(false);
+    }
+  };
+
+  const handleBulkImport = async () => {
+    if (bulkImportData.length === 0) {
+      alert("Please select a file first");
+      return;
+    }
+
+    if (!validationResults) {
+      alert(
+        "Please validate the data first by clicking 'Validate Data' button"
+      );
+      return;
+    }
+
+    if (validationResults.invalid > 0) {
+      const confirmImport = window.confirm(
+        `There are ${validationResults.invalid} invalid members. Do you want to import only the ${validationResults.valid} valid members?`
+      );
+      if (!confirmImport) return;
+    }
+
+    setIsImporting(true);
+    setImportResults(null);
+
+    try {
+      // Filter only valid members for import
+      const validMemberData = validationResults.validMembers.map(
+        (vm) => vm.data
+      );
+
+      const response = await fetch(
+        `${
+          import.meta.env.VITE_API_BASE_URL || "http://localhost:3000"
+        }/api/members/import/bulk`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ members: validMemberData }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (result.success) {
+        setImportResults(result);
+        dispatch(fetchAllMembers({ page: currentPage, limit: membersPerPage }));
+        dispatch(fetchMemberStatistics());
+
+        toast.success(
+          `Successfully imported ${result.summary.successful} members!`
+        );
+
+        setTimeout(() => {
+          if (result.summary.failed === 0) {
+            setIsBulkImportOpen(false);
+            setBulkImportFile(null);
+            setBulkImportData([]);
+            setImportResults(null);
+            setValidationResults(null);
+          }
+        }, 2000);
+      } else {
+        toast.error("Import failed: " + result.message);
+      }
+    } catch (error) {
+      console.error("Error importing members:", error);
+      toast.error("Error importing members. Please try again.");
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const downloadTemplate = async () => {
+    try {
+      const response = await fetch(
+        `${
+          import.meta.env.VITE_API_BASE_URL || "http://localhost:3000"
+        }/api/members/import/template`,
+        { credentials: "include" }
+      );
+      const result = await response.json();
+
+      if (result.success) {
+        const worksheet = XLSX.utils.json_to_sheet(result.template);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Members");
+
+        const instructionsData = Object.entries(result.instructions).map(
+          ([field, instruction]) => ({
+            Field: field,
+            Instruction: instruction,
+          })
+        );
+        const instructionsSheet = XLSX.utils.json_to_sheet(instructionsData);
+        XLSX.utils.book_append_sheet(
+          workbook,
+          instructionsSheet,
+          "Instructions"
+        );
+
+        XLSX.writeFile(workbook, "Member_Import_Template.xlsx");
+      }
+    } catch (error) {
+      console.error("Error downloading template:", error);
+      alert("Error downloading template. Please try again.");
+    }
+  };
+
+  const downloadDemoTemplate = () => {
+    const apiUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
+    const demoUrl = `${apiUrl}/public/Member_Import_Demo_Template.xlsx`;
+    const link = document.createElement("a");
+    link.href = demoUrl;
+    link.download = "Member_Import_Demo_Template.xlsx";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   // Step validation functions
@@ -971,16 +1293,25 @@ const Addmember = () => {
               Manage your gym member admissions
             </p>
           </div>
-          <button
-            onClick={() => {
-              resetForm();
-              setIsDrawerOpen(true);
-            }}
-            className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-lg font-semibold hover:shadow-lg hover:shadow-red-500/50 transition-all duration-300 flex items-center justify-center gap-2"
-          >
-            <Users className="w-5 h-5" />
-            Add Member
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setIsBulkImportOpen(true)}
+              className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg font-semibold hover:shadow-lg hover:shadow-green-500/50 transition-all duration-300 flex items-center justify-center gap-2"
+            >
+              <Upload className="w-5 h-5" />
+              Bulk Import
+            </button>
+            <button
+              onClick={() => {
+                resetForm();
+                setIsDrawerOpen(true);
+              }}
+              className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-lg font-semibold hover:shadow-lg hover:shadow-red-500/50 transition-all duration-300 flex items-center justify-center gap-2"
+            >
+              <Users className="w-5 h-5" />
+              Add Member
+            </button>
+          </div>
         </div>
 
         {/* Stats Cards */}
@@ -1062,120 +1393,258 @@ const Addmember = () => {
               <p className="text-gray-400">No members found</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-700/50">
-                  <tr>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                      Reg. No.
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                      Member
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                      Contact
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                      Package
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                      Joined
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-700">
-                  {members.map((member) => (
-                    <tr
-                      key={member._id}
-                      className="hover:bg-gray-700/30 transition-colors"
-                    >
-                      <td className="px-6 py-4">
-                        <div className="text-sm font-mono text-red-400">
-                          {member.registrationNumber}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          {member.photo ? (
-                            <img
-                              src={member.photo}
-                              alt={member.fullName}
-                              className="w-10 h-10 rounded-full object-cover border-2 border-red-500"
-                            />
-                          ) : (
-                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-red-600 to-red-700 flex items-center justify-center text-white font-semibold">
-                              {member.fullName.charAt(0)}
-                            </div>
-                          )}
-                          <div className="text-sm font-medium text-white">
-                            {member.fullName}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm text-gray-300">
-                          {member.email}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          {member.phoneNumber}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        {member.currentPackage?.packageName ? (
-                          <span className="px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-red-600 to-red-700 text-white">
-                            {member.currentPackage.packageName}
-                          </span>
-                        ) : (
-                          <span className="text-gray-500 text-xs">
-                            No active package
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm text-gray-300">
-                          {new Date(member.joiningDate).toLocaleDateString(
-                            "en-GB",
-                            {
-                              day: "2-digit",
-                              month: "2-digit",
-                              year: "2-digit",
-                            }
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => handleViewDetails(member)}
-                            className="p-2 hover:bg-blue-900/30 rounded-lg transition-colors"
-                            title="View Details"
-                          >
-                            <Eye className="w-4 h-4 text-blue-400 hover:text-blue-300" />
-                          </button>
-                          <button
-                            onClick={() => handleEdit(member)}
-                            className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
-                            title="Edit"
-                          >
-                            <Edit className="w-4 h-4 text-gray-400 hover:text-white" />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(member._id)}
-                            className="p-2 hover:bg-red-900/30 rounded-lg transition-colors"
-                            title="Delete"
-                          >
-                            <Trash2 className="w-4 h-4 text-gray-400 hover:text-red-500" />
-                          </button>
-                        </div>
-                      </td>
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-700/50">
+                    <tr>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                        Reg. No.
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                        Member
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                        Contact
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                        Package
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                        Joined
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                        Actions
+                      </th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-gray-700">
+                    {members.map((member) => (
+                      <tr
+                        key={member._id}
+                        className="hover:bg-gray-700/30 transition-colors"
+                      >
+                        <td className="px-6 py-4">
+                          <div className="text-sm font-mono text-red-400">
+                            {member.registrationNumber}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            {member.photo ? (
+                              <img
+                                src={member.photo}
+                                alt={member.fullName}
+                                className="w-10 h-10 rounded-full object-cover border-2 border-red-500"
+                              />
+                            ) : (
+                              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-red-600 to-red-700 flex items-center justify-center text-white font-semibold">
+                                {member.fullName.charAt(0)}
+                              </div>
+                            )}
+                            <div className="text-sm font-medium text-white">
+                              {member.fullName}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="text-sm text-gray-300">
+                            {member.email}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {member.phoneNumber}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          {member.currentPackage?.packageName ? (
+                            <span className="px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-red-600 to-red-700 text-white">
+                              {member.currentPackage.packageName}
+                            </span>
+                          ) : (
+                            <span className="text-gray-500 text-xs">
+                              No active package
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4">
+                          <span
+                            className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                              member.memberStatus === "Active"
+                                ? "bg-green-600/20 text-green-400 border border-green-600/30"
+                                : member.memberStatus === "Expired"
+                                ? "bg-orange-600/20 text-orange-400 border border-orange-600/30"
+                                : member.memberStatus === "Suspended"
+                                ? "bg-red-600/20 text-red-400 border border-red-600/30"
+                                : "bg-gray-600/20 text-gray-400 border border-gray-600/30"
+                            }`}
+                          >
+                            {member.memberStatus || "Inactive"}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="text-sm text-gray-300">
+                            {formatDateForDisplay(member.joiningDate)}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleViewDetails(member)}
+                              className="p-2 hover:bg-blue-900/30 rounded-lg transition-colors"
+                              title="View Details"
+                            >
+                              <Eye className="w-4 h-4 text-blue-400 hover:text-blue-300" />
+                            </button>
+                            <button
+                              onClick={() => handleEdit(member)}
+                              className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
+                              title="Edit"
+                            >
+                              <Edit className="w-4 h-4 text-gray-400 hover:text-white" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(member._id)}
+                              className="p-2 hover:bg-red-900/30 rounded-lg transition-colors"
+                              title="Delete"
+                            >
+                              <Trash2 className="w-4 h-4 text-gray-400 hover:text-red-500" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination Controls */}
+              <div className="bg-gray-800/50 px-6 py-4 border-t border-gray-700">
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                  {/* Results Info */}
+                  <div className="text-sm text-gray-400">
+                    Showing{" "}
+                    <span className="font-semibold text-white">
+                      {(pagination.currentPage - 1) * membersPerPage + 1}
+                    </span>{" "}
+                    to{" "}
+                    <span className="font-semibold text-white">
+                      {Math.min(
+                        pagination.currentPage * membersPerPage,
+                        pagination.totalMembers
+                      )}
+                    </span>{" "}
+                    of{" "}
+                    <span className="font-semibold text-white">
+                      {pagination.totalMembers}
+                    </span>{" "}
+                    members
+                  </div>
+
+                  {/* Page Size Selector */}
+                  <div className="flex items-center gap-2">
+                    <label htmlFor="pageSize" className="text-sm text-gray-400">
+                      Per page:
+                    </label>
+                    <select
+                      id="pageSize"
+                      value={membersPerPage}
+                      onChange={(e) => {
+                        setMembersPerPage(Number(e.target.value));
+                        setCurrentPage(1);
+                      }}
+                      className="bg-gray-700 text-white border border-gray-600 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                    >
+                      <option value={10}>10</option>
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                    </select>
+                  </div>
+
+                  {/* Pagination Buttons */}
+                  <div className="flex items-center gap-2">
+                    {/* Previous Button */}
+                    <button
+                      onClick={() =>
+                        setCurrentPage((prev) => Math.max(1, prev - 1))
+                      }
+                      disabled={pagination.currentPage === 1}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                        pagination.currentPage === 1
+                          ? "bg-gray-700 text-gray-500 cursor-not-allowed"
+                          : "bg-gray-700 text-white hover:bg-gray-600"
+                      }`}
+                    >
+                      Previous
+                    </button>
+
+                    {/* Page Numbers */}
+                    <div className="flex items-center gap-1">
+                      {[...Array(pagination.totalPages)].map((_, index) => {
+                        const pageNumber = index + 1;
+
+                        // Show first page, last page, current page, and pages around current
+                        if (
+                          pageNumber === 1 ||
+                          pageNumber === pagination.totalPages ||
+                          (pageNumber >= pagination.currentPage - 1 &&
+                            pageNumber <= pagination.currentPage + 1)
+                        ) {
+                          return (
+                            <button
+                              key={pageNumber}
+                              onClick={() => setCurrentPage(pageNumber)}
+                              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                                pagination.currentPage === pageNumber
+                                  ? "bg-gradient-to-r from-red-600 to-red-700 text-white"
+                                  : "bg-gray-700 text-white hover:bg-gray-600"
+                              }`}
+                            >
+                              {pageNumber}
+                            </button>
+                          );
+                        } else if (
+                          pageNumber === pagination.currentPage - 2 ||
+                          pageNumber === pagination.currentPage + 2
+                        ) {
+                          return (
+                            <span
+                              key={pageNumber}
+                              className="px-2 text-gray-500"
+                            >
+                              ...
+                            </span>
+                          );
+                        }
+                        return null;
+                      })}
+                    </div>
+
+                    {/* Next Button */}
+                    <button
+                      onClick={() =>
+                        setCurrentPage((prev) =>
+                          Math.min(pagination.totalPages, prev + 1)
+                        )
+                      }
+                      disabled={
+                        pagination.currentPage === pagination.totalPages
+                      }
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                        pagination.currentPage === pagination.totalPages
+                          ? "bg-gray-700 text-gray-500 cursor-not-allowed"
+                          : "bg-gray-700 text-white hover:bg-gray-600"
+                      }`}
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </>
           )}
         </div>
       </div>
@@ -1288,6 +1757,40 @@ const Addmember = () => {
                     >
                       {selectedMember.vaccinationStatus}
                     </span>
+                  </div>
+                  <div>
+                    <p className="text-gray-400 text-sm mb-1">Member Status</p>
+                    <span
+                      className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                        selectedMember.memberStatus === "Active"
+                          ? "bg-green-600/20 text-green-400 border border-green-600/30"
+                          : selectedMember.memberStatus === "Expired"
+                          ? "bg-orange-600/20 text-orange-400 border border-orange-600/30"
+                          : selectedMember.memberStatus === "Suspended"
+                          ? "bg-red-600/20 text-red-400 border border-red-600/30"
+                          : "bg-gray-600/20 text-gray-400 border border-gray-600/30"
+                      }`}
+                    >
+                      {selectedMember.memberStatus || "Inactive"}
+                    </span>
+                  </div>
+                  <div>
+                    <p className="text-gray-400 text-sm mb-1">
+                      Member Joining Date
+                    </p>
+                    <p className="text-white flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-green-400" />
+                      {formatDateForDisplay(selectedMember.joiningDate)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-gray-400 text-sm mb-1">Last Updated</p>
+                    <p className="text-white flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-blue-400" />
+                      {selectedMember.lastUpdatedDate
+                        ? formatDateForDisplay(selectedMember.lastUpdatedDate)
+                        : "N/A"}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -1968,7 +2471,12 @@ const Addmember = () => {
                       if (data.success) {
                         toast.success("Payment updated successfully!");
                         setIsPaymentEditOpen(false);
-                        dispatch(fetchAllMembers({ page: 1, limit: 10 }));
+                        dispatch(
+                          fetchAllMembers({
+                            page: currentPage,
+                            limit: membersPerPage,
+                          })
+                        );
                         dispatch(fetchMemberById(selectedMember._id));
                       } else {
                         toast.error(data.error || "Failed to update payment");
@@ -2534,7 +3042,12 @@ const Addmember = () => {
                           setIsRenewModalOpen(false);
                           setSelectedRenewPackage(null);
                           setIsRenewFormOpen(false);
-                          dispatch(fetchAllMembers({ page: 1, limit: 10 }));
+                          dispatch(
+                            fetchAllMembers({
+                              page: currentPage,
+                              limit: membersPerPage,
+                            })
+                          );
                           dispatch(fetchMemberById(selectedMember._id));
                         } else {
                           toast.error(data.error || "Failed to renew package");
@@ -3131,7 +3644,12 @@ const Addmember = () => {
                               paymentMethod: "Cash",
                               transactionId: "",
                             });
-                            dispatch(fetchAllMembers({ page: 1, limit: 10 }));
+                            dispatch(
+                              fetchAllMembers({
+                                page: currentPage,
+                                limit: membersPerPage,
+                              })
+                            );
                             dispatch(fetchMemberById(selectedMember._id));
                           } else {
                             toast.error(data.error || "Failed to add package");
@@ -3490,7 +4008,12 @@ const Addmember = () => {
                         setFreezeStartDate("");
                         setFreezeEndDate("");
                         dispatch(fetchMemberById(selectedMember._id));
-                        dispatch(fetchAllMembers({ page: 1, limit: 10 }));
+                        dispatch(
+                          fetchAllMembers({
+                            page: currentPage,
+                            limit: membersPerPage,
+                          })
+                        );
                       } else {
                         toast.error(data.error || "Failed to freeze package");
                       }
@@ -3711,7 +4234,12 @@ const Addmember = () => {
                         setExtensionAmount("");
                         setExtensionPaid("");
                         dispatch(fetchMemberById(selectedMember._id));
-                        dispatch(fetchAllMembers({ page: 1, limit: 10 }));
+                        dispatch(
+                          fetchAllMembers({
+                            page: currentPage,
+                            limit: membersPerPage,
+                          })
+                        );
                       } else {
                         toast.error(data.error || "Failed to extend package");
                       }
@@ -3871,6 +4399,24 @@ const Addmember = () => {
                       />
                       <p className="text-xs text-gray-400 mt-1">
                         Leave empty to auto-generate (FLM####)
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-300 mb-2">
+                        <Calendar className="w-4 h-4 inline mr-2" />
+                        Member Joining Date *
+                      </label>
+                      <input
+                        type="date"
+                        name="joiningDate"
+                        value={formData.joiningDate || ""}
+                        onChange={handleInputChange}
+                        required
+                        className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-red-500"
+                      />
+                      <p className="text-xs text-gray-400 mt-1">
+                        The date when member joined the gym
                       </p>
                     </div>
 
@@ -4056,7 +4602,7 @@ const Addmember = () => {
                         <input
                           type="date"
                           name="dateOfBirth"
-                          value={parseDateFromDisplay(formData.dateOfBirth)}
+                          value={formData.dateOfBirth || ""}
                           onChange={handleInputChange}
                           className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-red-500"
                         />
@@ -4325,9 +4871,7 @@ const Addmember = () => {
                         <input
                           type="date"
                           name="startDate"
-                          value={parseDateFromDisplay(
-                            packageFormData.startDate
-                          )}
+                          value={packageFormData.startDate || ""}
                           onChange={handlePackageInputChange}
                           className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-red-500"
                         />
@@ -4340,7 +4884,7 @@ const Addmember = () => {
                         <input
                           type="date"
                           name="endDate"
-                          value={parseDateFromDisplay(packageFormData.endDate)}
+                          value={packageFormData.endDate || ""}
                           disabled
                           className="w-full px-4 py-3 bg-gray-600 border border-gray-600 rounded-lg text-gray-300 cursor-not-allowed"
                           title="End date is automatically calculated based on package duration"
@@ -4422,9 +4966,7 @@ const Addmember = () => {
                         <input
                           type="date"
                           name="paymentDate"
-                          value={parseDateFromDisplay(
-                            packageFormData.paymentDate
-                          )}
+                          value={packageFormData.paymentDate || ""}
                           onChange={handlePackageInputChange}
                           className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-red-500"
                         />
@@ -4600,6 +5142,462 @@ const Addmember = () => {
           </div>
         </div>
       </div>
+
+      {/* Bulk Import Modal */}
+      {isBulkImportOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="p-6 border-b border-gray-700 bg-gradient-to-r from-green-600 to-green-700">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Upload className="w-6 h-6 text-white" />
+                  <h2 className="text-2xl font-bold text-white">
+                    Bulk Import Members
+                  </h2>
+                </div>
+                <button
+                  onClick={() => {
+                    setIsBulkImportOpen(false);
+                    setBulkImportFile(null);
+                    setBulkImportData([]);
+                    setImportResults(null);
+                    setValidationResults(null);
+                  }}
+                  className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                >
+                  <X className="w-6 h-6 text-white" />
+                </button>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {/* Instructions */}
+              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+                <h3 className="text-blue-400 font-semibold mb-2 flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5" />
+                  Instructions
+                </h3>
+                <ul className="text-blue-300 text-sm space-y-1 ml-6 list-disc">
+                  <li>Download the template and fill in member details</li>
+                  <li>
+                    Package name must match exactly with existing packages
+                  </li>
+                  <li>Start date format: YYYY-MM-DD or DD/MM/YYYY</li>
+                  <li>
+                    End date will be calculated automatically based on package
+                    duration
+                  </li>
+                  <li>
+                    If phone number exists, package will be added to existing
+                    member
+                  </li>
+                </ul>
+              </div>
+
+              {/* Download Templates */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <button
+                  onClick={downloadTemplate}
+                  className="px-6 py-3 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg font-semibold hover:shadow-lg hover:shadow-purple-500/50 transition-all duration-300 flex items-center justify-center gap-2"
+                >
+                  <Download className="w-5 h-5" />
+                  Download Template
+                </button>
+                <button
+                  onClick={downloadDemoTemplate}
+                  className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg font-semibold hover:shadow-lg hover:shadow-blue-500/50 transition-all duration-300 flex items-center justify-center gap-2"
+                >
+                  <FileSpreadsheet className="w-5 h-5" />
+                  Download Demo Template
+                </button>
+              </div>
+
+              {/* File Upload */}
+              <div className="bg-gray-700/50 rounded-lg p-6">
+                <label className="block text-white font-semibold mb-3">
+                  Select Excel File
+                </label>
+                <input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={handleFileSelect}
+                  className="w-full px-4 py-3 bg-gray-700 text-white rounded-lg border border-gray-600 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 outline-none transition-all"
+                />
+                {bulkImportFile && (
+                  <p className="text-green-400 text-sm mt-2">
+                    ✓ Selected: {bulkImportFile.name}
+                  </p>
+                )}
+              </div>
+
+              {/* Preview Data */}
+              {bulkImportData.length > 0 && (
+                <div className="bg-gray-700/50 rounded-lg p-4">
+                  <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
+                    <FileSpreadsheet className="w-5 h-5 text-green-400" />
+                    Preview: {bulkImportData.length} members found
+                  </h3>
+
+                  <div className="max-h-60 overflow-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-800 sticky top-0">
+                        <tr>
+                          <th className="px-3 py-2 text-left text-gray-300">
+                            #
+                          </th>
+                          <th className="px-3 py-2 text-left text-gray-300">
+                            Full Name
+                          </th>
+                          <th className="px-3 py-2 text-left text-gray-300">
+                            Phone
+                          </th>
+                          <th className="px-3 py-2 text-left text-gray-300">
+                            Package
+                          </th>
+                          <th className="px-3 py-2 text-left text-gray-300">
+                            Start Date
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {bulkImportData.slice(0, 10).map((member, index) => {
+                          const fullName = getExcelFieldValue(
+                            member,
+                            "Full Name",
+                            "fullName",
+                            "Name"
+                          );
+                          const phone = getExcelFieldValue(
+                            member,
+                            "Phone Number",
+                            "phoneNumber",
+                            "Phone"
+                          );
+                          const packageName = getExcelFieldValue(
+                            member,
+                            "Package Name",
+                            "packageName",
+                            "Package"
+                          );
+                          const startDate = getExcelFieldValue(
+                            member,
+                            "package start date",
+                            "packageStartDate",
+                            "Start Date",
+                            "startDate"
+                          );
+
+                          return (
+                            <tr
+                              key={index}
+                              className="border-t border-gray-700"
+                            >
+                              <td className="px-3 py-2 text-gray-400">
+                                {index + 1}
+                              </td>
+                              <td className="px-3 py-2 text-white">
+                                {fullName || "N/A"}
+                              </td>
+                              <td className="px-3 py-2 text-gray-300">
+                                {phone || "N/A"}
+                              </td>
+                              <td className="px-3 py-2 text-blue-400">
+                                {packageName || "N/A"}
+                              </td>
+                              <td className="px-3 py-2 text-gray-300">
+                                {startDate || "N/A"}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    {bulkImportData.length > 10 && (
+                      <p className="text-gray-400 text-xs mt-2 text-center">
+                        Showing first 10 of {bulkImportData.length} members
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Validate Button */}
+              {bulkImportData.length > 0 && !importResults && (
+                <div className="flex justify-center">
+                  <button
+                    onClick={validateMembers}
+                    disabled={isValidating}
+                    className="px-8 py-3 bg-gradient-to-r from-yellow-600 to-yellow-700 text-white rounded-lg font-semibold hover:shadow-lg hover:shadow-yellow-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {isValidating ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Validating...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="w-5 h-5" />
+                        Validate Data
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {/* Validation Results */}
+              {validationResults && (
+                <div className="bg-gray-700/50 rounded-lg p-4">
+                  <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
+                    <CheckCircle className="w-5 h-5 text-yellow-400" />
+                    Validation Results
+                  </h3>
+
+                  <div className="grid grid-cols-3 gap-4 mb-4">
+                    <div className="bg-gray-800 rounded-lg p-3 text-center">
+                      <p className="text-gray-400 text-xs mb-1">
+                        Total Members
+                      </p>
+                      <p className="text-white text-2xl font-bold">
+                        {validationResults.total}
+                      </p>
+                    </div>
+                    <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3 text-center">
+                      <p className="text-green-400 text-xs mb-1">Valid</p>
+                      <p className="text-green-400 text-2xl font-bold">
+                        {validationResults.valid}
+                      </p>
+                    </div>
+                    <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-center">
+                      <p className="text-red-400 text-xs mb-1">Invalid</p>
+                      <p className="text-red-400 text-2xl font-bold">
+                        {validationResults.invalid}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Invalid Members */}
+                  {validationResults.invalid > 0 && (
+                    <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-4">
+                      <h4 className="text-red-400 font-semibold mb-3 flex items-center gap-2">
+                        <XCircle className="w-4 h-4" />
+                        Invalid Members ({validationResults.invalid})
+                      </h4>
+                      <div className="max-h-60 overflow-auto space-y-3">
+                        {validationResults.invalidMembers.map(
+                          (invalid, index) => (
+                            <div
+                              key={index}
+                              className="bg-gray-800/50 rounded-lg p-3"
+                            >
+                              <div className="flex items-start justify-between mb-2">
+                                <div>
+                                  <p className="text-red-300 font-semibold">
+                                    Row {invalid.row}: {invalid.fullName}
+                                  </p>
+                                  <p className="text-gray-400 text-xs">
+                                    Phone: {invalid.phone || "N/A"}
+                                  </p>
+                                </div>
+                                <span className="px-2 py-1 bg-red-500/20 text-red-400 text-xs rounded-full">
+                                  {invalid.errors.length} error(s)
+                                </span>
+                              </div>
+                              <ul className="space-y-1 ml-4">
+                                {invalid.errors.map((error, errIndex) => (
+                                  <li
+                                    key={errIndex}
+                                    className="text-red-400 text-sm flex items-start gap-2"
+                                  >
+                                    <span className="text-red-500 mt-1">•</span>
+                                    <span>{error}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                              {invalid.warnings &&
+                                invalid.warnings.length > 0 && (
+                                  <ul className="space-y-1 ml-4 mt-2 pt-2 border-t border-gray-700">
+                                    {invalid.warnings.map(
+                                      (warning, warnIndex) => (
+                                        <li
+                                          key={warnIndex}
+                                          className="text-yellow-400 text-sm flex items-start gap-2"
+                                        >
+                                          <span className="text-yellow-500 mt-1">
+                                            ⚠
+                                          </span>
+                                          <span>{warning}</span>
+                                        </li>
+                                      )
+                                    )}
+                                  </ul>
+                                )}
+                            </div>
+                          )
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Valid Members with Warnings */}
+                  {validationResults.valid > 0 && (
+                    <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3">
+                      <h4 className="text-green-400 font-semibold mb-3 flex items-center gap-2">
+                        <CheckCircle className="w-4 h-4" />
+                        Valid Members ({validationResults.valid})
+                      </h4>
+                      <div className="max-h-60 overflow-auto space-y-2">
+                        {validationResults.validMembers
+                          .slice(0, 10)
+                          .map((valid, index) => (
+                            <div
+                              key={index}
+                              className="bg-gray-800/50 rounded-lg p-2 flex items-center justify-between"
+                            >
+                              <div className="flex-1">
+                                <p className="text-green-300 font-medium text-sm">
+                                  Row {valid.row}: {valid.fullName}
+                                </p>
+                                <p className="text-gray-400 text-xs">
+                                  Phone: {valid.phone} | Package:{" "}
+                                  {valid.package}
+                                </p>
+                                {valid.warnings &&
+                                  valid.warnings.length > 0 && (
+                                    <ul className="space-y-1 mt-1 ml-2">
+                                      {valid.warnings.map(
+                                        (warning, warnIndex) => (
+                                          <li
+                                            key={warnIndex}
+                                            className="text-yellow-400 text-xs flex items-start gap-1"
+                                          >
+                                            <span className="text-yellow-500">
+                                              ⚠
+                                            </span>
+                                            <span>{warning}</span>
+                                          </li>
+                                        )
+                                      )}
+                                    </ul>
+                                  )}
+                              </div>
+                              <CheckCircle className="w-4 h-4 text-green-400 flex-shrink-0 ml-2" />
+                            </div>
+                          ))}
+                        {validationResults.validMembers.length > 10 && (
+                          <p className="text-gray-400 text-xs text-center py-2">
+                            ...and {validationResults.validMembers.length - 10}{" "}
+                            more valid members
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Import Results */}
+              {importResults && (
+                <div className="bg-gray-700/50 rounded-lg p-4">
+                  <h3 className="text-white font-semibold mb-3">
+                    Import Results
+                  </h3>
+
+                  <div className="grid grid-cols-4 gap-4 mb-4">
+                    <div className="bg-gray-800 rounded-lg p-3 text-center">
+                      <p className="text-gray-400 text-xs mb-1">Total</p>
+                      <p className="text-white text-2xl font-bold">
+                        {importResults.summary.total}
+                      </p>
+                    </div>
+                    <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3 text-center">
+                      <p className="text-green-400 text-xs mb-1">Successful</p>
+                      <p className="text-green-400 text-2xl font-bold">
+                        {importResults.summary.successful}
+                      </p>
+                    </div>
+                    <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 text-center">
+                      <p className="text-blue-400 text-xs mb-1">Created</p>
+                      <p className="text-blue-400 text-2xl font-bold">
+                        {importResults.summary.created}
+                      </p>
+                    </div>
+                    <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 text-center">
+                      <p className="text-yellow-400 text-xs mb-1">Updated</p>
+                      <p className="text-yellow-400 text-2xl font-bold">
+                        {importResults.summary.updated}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Failed Records */}
+                  {importResults.results.failed.length > 0 && (
+                    <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
+                      <h4 className="text-red-400 font-semibold mb-2">
+                        Failed Records ({importResults.results.failed.length})
+                      </h4>
+                      <div className="max-h-40 overflow-auto space-y-2">
+                        {importResults.results.failed.map((failure, index) => (
+                          <div key={index} className="text-sm">
+                            <p className="text-red-300">
+                              Row {failure.row}: {failure.fullName}
+                            </p>
+                            <p className="text-red-400 text-xs ml-4">
+                              Error: {failure.error}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 border-t border-gray-700 bg-gray-800/50">
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setIsBulkImportOpen(false);
+                    setBulkImportFile(null);
+                    setBulkImportData([]);
+                    setImportResults(null);
+                    setValidationResults(null);
+                  }}
+                  disabled={isImporting}
+                  className="flex-1 px-6 py-3 bg-gray-700 text-white rounded-lg font-semibold hover:bg-gray-600 transition-colors disabled:opacity-50"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={handleBulkImport}
+                  disabled={
+                    isImporting ||
+                    bulkImportData.length === 0 ||
+                    !validationResults ||
+                    (validationResults && validationResults.valid === 0)
+                  }
+                  className="flex-1 px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg font-semibold hover:shadow-lg hover:shadow-green-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {isImporting ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Importing...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-5 h-5" />
+                      Import Members
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
