@@ -182,6 +182,7 @@ const Addmember = () => {
     salesRepresentative: "",
     notes: "",
     joiningDate: new Date().toISOString().split("T")[0],
+    dueDate: "",
     packages: [],
     totalPaid: 0,
     totalPending: 0,
@@ -357,15 +358,29 @@ const Addmember = () => {
     return `${day}/${month}/${year}`;
   };
 
-  // Helper function to parse DD/MM/YYYY to YYYY-MM-DD for storage
+  // Helper function to parse display dates (DD/MM/YYYY or YYYY-MM-DD) to YYYY-MM-DD for storage
   const parseDateFromDisplay = (displayDate) => {
     if (!displayDate) return "";
-    const parts = displayDate.split("/");
-    if (parts.length !== 3) return "";
-    const [day, month, year] = parts;
-    // Validate the date parts
-    if (day.length !== 2 || month.length !== 2 || year.length !== 4) return "";
-    return `${year}-${month}-${day}`;
+    // If already in ISO-like YYYY-MM-DD, return as-is (trim time portion if present)
+    const isoMatch = displayDate.match(/^\d{4}-\d{2}-\d{2}/);
+    if (isoMatch) return isoMatch[0];
+
+    // If in DD/MM/YYYY format, convert to YYYY-MM-DD
+    if (displayDate.includes("/")) {
+      const parts = displayDate.split("/");
+      if (parts.length !== 3) return "";
+      const [day, month, year] = parts;
+      if (day.length !== 2 || month.length !== 2 || year.length !== 4)
+        return "";
+      return `${year}-${month}-${day}`;
+    }
+
+    // As a fallback, try to parse with Date and return YYYY-MM-DD
+    const d = new Date(displayDate);
+    if (!isNaN(d.getTime())) {
+      return d.toISOString().split("T")[0];
+    }
+    return "";
   };
 
   // Helper function to convert DD/MM/YYYY dates to ISO format for database
@@ -375,18 +390,47 @@ const Addmember = () => {
     // Convert main date fields
     if (convertedData.dateOfBirth) {
       const isoDate = parseDateFromDisplay(convertedData.dateOfBirth);
-      convertedData.dateOfBirth = isoDate || null;
+      // Convert YYYY-MM-DD to full ISO DateTime
+      if (isoDate && isoDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        convertedData.dateOfBirth = new Date(isoDate).toISOString();
+      } else {
+        convertedData.dateOfBirth = isoDate || null;
+      }
     }
 
     if (convertedData.joiningDate) {
       const isoDate = parseDateFromDisplay(convertedData.joiningDate);
-      convertedData.joiningDate =
-        isoDate || new Date().toISOString().split("T")[0];
+      // Convert YYYY-MM-DD to full ISO DateTime
+      if (isoDate && isoDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        convertedData.joiningDate = new Date(isoDate).toISOString();
+      } else {
+        convertedData.joiningDate = new Date().toISOString();
+      }
+    }
+
+    if (convertedData.dueDate) {
+      const isoDate = parseDateFromDisplay(convertedData.dueDate);
+      // Convert YYYY-MM-DD to full ISO DateTime
+      if (isoDate && isoDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        convertedData.dueDate = new Date(isoDate).toISOString();
+      } else {
+        convertedData.dueDate = isoDate || null;
+      }
+    }
+
+    // Normalize empty dueDate to null so backend stores empty instead of empty string
+    if (!convertedData.dueDate) {
+      convertedData.dueDate = null;
     }
 
     if (convertedData.paymentDate) {
       const isoDate = parseDateFromDisplay(convertedData.paymentDate);
-      convertedData.paymentDate = isoDate || null;
+      // Convert YYYY-MM-DD to full ISO DateTime
+      if (isoDate && isoDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        convertedData.paymentDate = new Date(isoDate).toISOString();
+      } else {
+        convertedData.paymentDate = isoDate || null;
+      }
     }
 
     // Convert package dates
@@ -411,12 +455,15 @@ const Addmember = () => {
   const handleInputChange = (e) => {
     const { name, value } = e.target;
 
-    // Handle date inputs - convert from YYYY-MM-DD to DD/MM/YYYY
-    if (name === "dateOfBirth" || name === "joiningDate") {
-      const formattedValue = formatDateForDisplay(value);
+    // Handle date inputs - store YYYY-MM-DD directly (date inputs use ISO)
+    if (
+      name === "dateOfBirth" ||
+      name === "joiningDate" ||
+      name === "dueDate"
+    ) {
       setFormData((prev) => ({
         ...prev,
-        [name]: formattedValue,
+        [name]: value,
       }));
       return;
     }
@@ -445,11 +492,23 @@ const Addmember = () => {
     const selectedPackage = packages.find((pkg) => pkg._id === packageId);
     if (!selectedPackage || !selectedPackage.duration) return "";
 
-    // Parse DD/MM/YYYY to Date object
-    const dateParts = startDate.split("/");
-    if (dateParts.length !== 3) return "";
-    const [day, month, year] = dateParts;
-    const start = new Date(year, month - 1, day);
+    // Accept either DD/MM/YYYY or YYYY-MM-DD (from date input)
+    let start = null;
+    if (startDate.includes("/")) {
+      const dateParts = startDate.split("/");
+      if (dateParts.length !== 3) return "";
+      const [day, month, year] = dateParts;
+      start = new Date(year, month - 1, day);
+    } else if (startDate.includes("-")) {
+      const parts = startDate.split("-");
+      if (parts.length < 3) return "";
+      const [year, month, day] = parts;
+      start = new Date(year, month - 1, day);
+    } else {
+      const d = new Date(startDate);
+      if (isNaN(d.getTime())) return "";
+      start = d;
+    }
 
     const { value, unit } = selectedPackage.duration;
 
@@ -472,29 +531,27 @@ const Addmember = () => {
         return "";
     }
 
-    // Format date as DD/MM/YYYY
+    // Return end date as YYYY-MM-DD for use in date inputs
     const endDay = String(endDate.getDate()).padStart(2, "0");
     const endMonth = String(endDate.getMonth() + 1).padStart(2, "0");
     const endYear = endDate.getFullYear();
-    return `${endDay}/${endMonth}/${endYear}`;
+    return `${endYear}-${endMonth}-${endDay}`;
   };
 
   const handlePackageInputChange = (e) => {
     const { name, value, type, checked } = e.target;
 
-    // Handle date inputs - convert from YYYY-MM-DD to DD/MM/YYYY
+    // Handle date inputs - store YYYY-MM-DD directly
     if (name === "startDate" || name === "paymentDate") {
-      const formattedValue = formatDateForDisplay(value);
-
       setPackageFormData((prev) => {
         const updated = {
           ...prev,
-          [name]: formattedValue,
+          [name]: value,
         };
 
         // Auto-calculate end date when start date changes
-        if (name === "startDate" && updated.packageId && formattedValue) {
-          updated.endDate = calculateEndDate(formattedValue, updated.packageId);
+        if (name === "startDate" && updated.packageId && value) {
+          updated.endDate = calculateEndDate(value, updated.packageId);
         }
 
         return updated;
@@ -808,6 +865,8 @@ const Addmember = () => {
         documents: documentsArray,
       });
 
+      console.log("📤 Submitting member data:", memberData);
+
       if (editMode && currentMemberId) {
         const result = await dispatch(
           updateMember({ id: currentMemberId, updateData: memberData })
@@ -870,6 +929,7 @@ const Addmember = () => {
       joiningDate: member.joiningDate
         ? member.joiningDate.split("T")[0]
         : new Date().toISOString().split("T")[0],
+      dueDate: member.dueDate ? member.dueDate.split("T")[0] : "",
       packages: member.packages || [],
       totalPaid: member.totalPaid || 0,
       totalPending: member.totalPending || 0,
@@ -907,6 +967,7 @@ const Addmember = () => {
       joiningDate: member.joiningDate
         ? member.joiningDate.split("T")[0]
         : new Date().toISOString().split("T")[0],
+      dueDate: member.dueDate ? member.dueDate.split("T")[0] : "",
       packages: member.packages || [],
       totalPaid: member.totalPaid || 0,
       totalPending: member.totalPending || 0,
@@ -4417,6 +4478,23 @@ const Addmember = () => {
                       />
                       <p className="text-xs text-gray-400 mt-1">
                         The date when member joined the gym
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-300 mb-2">
+                        <Calendar className="w-4 h-4 inline mr-2" />
+                        Due Date (Optional)
+                      </label>
+                      <input
+                        type="date"
+                        name="dueDate"
+                        value={formData.dueDate || ""}
+                        onChange={handleInputChange}
+                        className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-red-500"
+                      />
+                      <p className="text-xs text-gray-400 mt-1">
+                        Optional: a due date associated with the member
                       </p>
                     </div>
 

@@ -434,6 +434,17 @@ const bulkImportMembers = async (req, res) => {
           "Active"
         ).trim();
 
+        // Extract financial fields
+        const emailId = memberData["Email Id"] || memberData["email"] || "";
+        const paidAmountRaw =
+          memberData["Paid Amount"] || memberData["paidAmount"] || "0";
+        const discountRaw =
+          memberData["Discount"] || memberData["discount"] || "0";
+        const dueRaw = memberData["Due"] || memberData["due"] || "";
+        const paymentMode = memberData["Mode"] || memberData["mode"] || "";
+        const dueDateRaw =
+          memberData["Due Date"] || memberData["dueDate"] || "";
+
         // Validate required fields
         if (!fullName || fullName.trim() === "") {
           throw new Error("Full Name is required");
@@ -515,14 +526,80 @@ const bulkImportMembers = async (req, res) => {
           packageDoc.duration.unit
         );
 
-        // Get full package price (no discount, full payment)
+        // Get full package price
         const packagePrice =
           packageDoc.discountedPrice || packageDoc.originalPrice;
+
+        // Parse and calculate financial fields
+        // 1. Determine discount amount (handle percentage to flat conversion)
+        let discountAmount = 0;
+        const discountNumeric = parseFloat(discountRaw) || 0;
+
+        if (discountNumeric > 0) {
+          // If discount looks like percentage and package uses percentage discount
+          if (
+            discountNumeric < 100 &&
+            packageDoc.discountedPrice &&
+            packageDoc.originalPrice &&
+            packageDoc.discountedPrice < packageDoc.originalPrice
+          ) {
+            // Calculate if this is percentage or flat
+            // If discountNumeric is small (< 100), check if it should be treated as percentage
+            const percentDiscount =
+              ((packageDoc.originalPrice - packageDoc.discountedPrice) /
+                packageDoc.originalPrice) *
+              100;
+            if (Math.abs(discountNumeric - percentDiscount) < 5) {
+              // It's a percentage, convert to flat
+              discountAmount = (discountNumeric / 100) * packagePrice;
+            } else {
+              // It's already a flat amount
+              discountAmount = discountNumeric;
+            }
+          } else {
+            // Treat as flat amount
+            discountAmount = discountNumeric;
+          }
+        }
+
+        // 2. Parse paid amount (amount received after discount)
+        const paidAmount = parseFloat(paidAmountRaw) || 0;
+
+        // 3. Calculate due amount
+        // Due = Package Price - Discount - Paid Amount
+        let dueAmount = 0;
+        if (dueRaw && !isNaN(parseFloat(dueRaw))) {
+          // If due is explicitly provided, use it
+          dueAmount = parseFloat(dueRaw);
+        } else {
+          // Calculate due amount
+          dueAmount = Math.max(0, packagePrice - discountAmount - paidAmount);
+        }
+
+        // 4. Determine payment status
+        const paymentStatus = dueAmount > 0 ? "Pending" : "Paid";
+
+        // 5. Parse and validate due date (optional, even if due > 0)
+        let dueDate = null;
+        if (dueDateRaw && dueDateRaw.trim() !== "") {
+          dueDate = parseDate(dueDateRaw);
+          if (!dueDate) {
+            throw new Error(
+              `Invalid Due Date format: ${dueDateRaw}. Use YYYY-MM-DD or DD/MM/YYYY`
+            );
+          }
+        }
+        // Due date is optional - only used if provided, not required even if due > 0
+
+        // 6. Determine payment method
+        const paymentMethod =
+          paymentMode && paymentMode.trim() !== ""
+            ? paymentMode.trim()
+            : "Cash";
+
         const finalAmount = packagePrice;
-        const totalPaid = packagePrice; // Full payment in cash
-        const totalPending = 0;
-        const paymentStatus = "Paid";
-        const paymentMethod = "Cash";
+        const totalPaid = paidAmount;
+        const totalPending = dueAmount;
 
         // Generate or validate registration number
         const genRegistrationNumber = await generateRegistrationNumber(
@@ -563,7 +640,7 @@ const bulkImportMembers = async (req, res) => {
             startDate: packageStartDate,
             endDate: packageEndDate,
             amount: packagePrice,
-            discount: 0,
+            discount: discountAmount,
             discountType: "flat",
             finalAmount,
             totalPaid,
@@ -575,6 +652,7 @@ const bulkImportMembers = async (req, res) => {
               packageStartDate <= new Date() ? "Active" : "Upcoming",
             isPrimary: existingMember.packages.length === 0,
             autoRenew: false,
+            dueDate: dueDate || null,
           };
 
           existingMember.packages.push(newPackage);
@@ -620,6 +698,7 @@ const bulkImportMembers = async (req, res) => {
             alternatePhone: "",
             gender: "Prefer not to say",
             joiningDate: memberJoiningDate,
+            dueDate: dueDate || null,
             status: memberStatus,
             packages: [
               {
@@ -629,7 +708,7 @@ const bulkImportMembers = async (req, res) => {
                 startDate: packageStartDate,
                 endDate: packageEndDate,
                 amount: packagePrice,
-                discount: 0,
+                discount: discountAmount,
                 discountType: "flat",
                 finalAmount,
                 totalPaid,
@@ -641,6 +720,7 @@ const bulkImportMembers = async (req, res) => {
                   packageStartDate <= new Date() ? "Active" : "Upcoming",
                 isPrimary: true,
                 autoRenew: false,
+                dueDate: dueDate || null,
               },
             ],
             totalPaid,
@@ -736,8 +816,14 @@ const generateImportTemplate = async (req, res) => {
         "Member Joining Date": "2025-01-01",
         "Full Name": "John Doe",
         Phone: "9876543210",
+        "Email Id": "john@example.com",
         Package: "FB Fitness Fantasia 2024 Yearly",
         "package start date": "2025-01-01",
+        "Paid Amount": "5000",
+        Discount: "1000",
+        Due: "",
+        Mode: "Credit Card",
+        "Due Date": "",
         trainer: "",
         "last update date": "2025-01-01",
         status: "Active",
@@ -752,11 +838,21 @@ const generateImportTemplate = async (req, res) => {
       "Full Name": "Required. Member's full name.",
       Phone:
         "Required. Member's phone number (must be unique). If phone exists, package will be added to existing member.",
+      "Email Id":
+        "Optional. Member's email address. Skip field if not available.",
       Package: `Required. Exact package name. Available: ${
         packageNames || "Check your packages list"
       }`,
       "package start date":
         "Required. Format: YYYY-MM-DD or DD/MM/YYYY. Package end date will be calculated automatically based on package duration.",
+      "Paid Amount":
+        "Optional (default: 0). Amount received from member (in flat amount, not including discount). This is the actual payment made.",
+      Discount:
+        "Optional (default: 0). Discount amount (in flat amount). If Excel has percentage discount and package uses percentage, system will convert percentage to flat amount.",
+      Due: "Optional. Due amount (in flat amount). If not provided, calculated as: Package Price - Discount - Paid Amount.",
+      Mode: "Optional (default: 'Cash'). Payment method (e.g., 'Credit Card', 'UPI', 'Check'). Type any payment mode.",
+      "Due Date":
+        "Optional. Format: YYYY-MM-DD or DD/MM/YYYY. Payment deadline for remaining amount. If not provided, no due date will be set even if due amount > 0.",
       trainer: `Optional. Trainer ID (not name). Available trainer IDs: ${
         trainerInfo || "No trainers available"
       }`,
@@ -766,13 +862,17 @@ const generateImportTemplate = async (req, res) => {
     };
 
     const notes = [
-      "💡 Payment: Full package amount will be automatically marked as PAID in CASH",
-      "💡 Package End Date: Automatically calculated based on package duration",
+      "💡 Payment Calculation: Due = Package Price - Discount - Paid Amount. Status = PAID if Due ≤ 0, PENDING if Due > 0",
+      "💡 Discount Handling: If providing percentage discount and package has percentage discount, system auto-converts to flat amount. Otherwise treats as flat amount.",
+      "💡 Due Date Validation: Optional. Only used if provided. Not required even if due amount > 0.",
+      "💡 Payment Mode: Optional. Defaults to 'Cash' if not specified.",
+      "💡 Package End Date: Automatically calculated based on package duration and start date",
       "💡 Registration Number: Auto-generated if not provided (FLM1001, FLM1002, etc.)",
       "💡 Existing Members: If phone number exists, new package will be added to that member",
       "💡 Trainer: Provide only the Trainer ID (MongoDB ObjectId), not the name",
       "💡 Validation: Use the 'Validate Data' button before importing",
       "💡 Large Files: System can handle 1500+ rows at once",
+      "⚠️ Required Fields: Full Name, Phone, Package, Package Start Date, Status",
     ];
 
     res.status(200).json({

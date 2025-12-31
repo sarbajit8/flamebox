@@ -87,6 +87,10 @@ const memberSchema = new mongoose.Schema(
       required: [true, "Joining date is required"],
       default: Date.now,
     },
+    dueDate: {
+      type: Date,
+      default: null,
+    },
 
     // ============================================
     // PACKAGES INFORMATION (Multiple Packages Support)
@@ -151,7 +155,15 @@ const memberSchema = new mongoose.Schema(
         },
         paymentMethod: {
           type: String,
-          enum: ["Cash", "Card", "UPI", "Net Banking", "Cheque", "Other"],
+          enum: [
+            "Cash",
+            "Card",
+            "UPI",
+            "Upi",
+            "Net Banking",
+            "Cheque",
+            "Other",
+          ],
           default: "Cash",
         },
         paymentDate: {
