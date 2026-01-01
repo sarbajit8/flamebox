@@ -24,6 +24,7 @@ import {
   Package as PackageIcon,
   IndianRupee,
   ChevronRight,
+  ChevronDown,
   Upload,
   FileSpreadsheet,
   Download,
@@ -137,6 +138,18 @@ const Addmember = () => {
   const [extensionAmount, setExtensionAmount] = useState("");
   const [extensionPaid, setExtensionPaid] = useState("");
   const [isExtending, setIsExtending] = useState(false);
+
+  // Edit package start date states
+  const [isEditStartDateModalOpen, setIsEditStartDateModalOpen] =
+    useState(false);
+  const [editingStartDatePackageId, setEditingStartDatePackageId] =
+    useState(null);
+  const [editingPackageName, setEditingPackageName] = useState("");
+  const [newStartDate, setNewStartDate] = useState("");
+  const [isUpdatingStartDate, setIsUpdatingStartDate] = useState(false);
+
+  // Expanded packages state for collapse/expand
+  const [expandedPackages, setExpandedPackages] = useState(new Set());
 
   // Multi-step form state
   const [currentStep, setCurrentStep] = useState(1);
@@ -992,6 +1005,78 @@ const Addmember = () => {
     setIsDetailsModalOpen(true);
     // Optionally fetch fresh data
     // dispatch(fetchMemberById(member._id));
+  };
+
+  const handleOpenEditStartDateModal = (
+    packageId,
+    packageName,
+    currentDate
+  ) => {
+    setEditingStartDatePackageId(packageId);
+    setEditingPackageName(packageName);
+    setNewStartDate(new Date(currentDate).toISOString().split("T")[0]);
+    setIsEditStartDateModalOpen(true);
+  };
+
+  const handleCloseEditStartDateModal = () => {
+    setIsEditStartDateModalOpen(false);
+    setEditingStartDatePackageId(null);
+    setEditingPackageName("");
+    setNewStartDate("");
+  };
+
+  const togglePackageExpand = (packageId) => {
+    const newExpanded = new Set(expandedPackages);
+    if (newExpanded.has(packageId)) {
+      newExpanded.delete(packageId);
+    } else {
+      newExpanded.add(packageId);
+    }
+    setExpandedPackages(newExpanded);
+  };
+
+  const handleUpdatePackageStartDate = async () => {
+    if (!editingStartDatePackageId || !newStartDate) {
+      toast.error("Please select a date");
+      return;
+    }
+
+    setIsUpdatingStartDate(true);
+    try {
+      const response = await fetch(
+        `${
+          import.meta.env.VITE_API_BASE_URL || "http://localhost:3000"
+        }/api/admin/members/${
+          selectedMember._id
+        }/packages/${editingStartDatePackageId}/start-date`,
+        {
+          method: "PATCH",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            startDate: newStartDate,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success("Package start date updated successfully!");
+        handleCloseEditStartDateModal();
+        // Refresh member data
+        dispatch(fetchMemberById(selectedMember._id));
+      } else {
+        toast.error(data.error || "Failed to update start date");
+      }
+    } catch (error) {
+      console.error("Error updating start date:", error);
+      toast.error("Failed to update start date");
+    } finally {
+      setIsUpdatingStartDate(false);
+    }
   };
 
   const handleSearch = (e) => {
@@ -2074,108 +2159,238 @@ const Addmember = () => {
                     </div>
                     <div className="space-y-3">
                       {selectedMember.packages.map((pkg, index) => (
-                        <div key={index} className="bg-gray-700 rounded-lg p-4">
-                          <div className="flex items-start justify-between mb-2">
-                            <div>
-                              <p className="text-white font-semibold">
-                                {pkg.packageName}
-                              </p>
-                              <p className="text-gray-400 text-sm">
-                                {pkg.packageType}
-                              </p>
-                            </div>
-                            <div className="flex gap-2">
-                              {pkg.isPrimary && (
-                                <span className="px-2 py-1 rounded text-xs font-semibold bg-yellow-600/20 text-yellow-400">
-                                  Primary
-                                </span>
-                              )}
-                              <button
-                                onClick={async () => {
-                                  if (
-                                    window.confirm(
-                                      "Mark this package as Expired? (For testing)"
-                                    )
-                                  ) {
-                                    try {
-                                      const response = await fetch(
-                                        `${
-                                          import.meta.env.VITE_API_BASE_URL ||
-                                          "http://localhost:3000"
-                                        }/api/admin/members/${
-                                          selectedMember._id
-                                        }/expire-package/${pkg._id}`,
-                                        {
-                                          method: "PATCH",
-                                          credentials: "include",
-                                          headers: {
-                                            "Content-Type": "application/json",
-                                          },
-                                        }
-                                      );
-                                      const data = await response.json();
-                                      if (data.success) {
-                                        toast.success(
-                                          "Package marked as expired"
-                                        );
-                                        dispatch(
-                                          fetchMemberById(selectedMember._id)
-                                        );
-                                      } else {
-                                        toast.error(
-                                          data.error ||
-                                            "Failed to expire package"
-                                        );
-                                      }
-                                    } catch (error) {
-                                      toast.error("Failed to expire package");
+                        <div
+                          key={index}
+                          className="bg-gray-700 rounded-lg overflow-hidden"
+                        >
+                          {/* Package Header - Always Visible */}
+                          <div className="p-4">
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-3">
+                                  <button
+                                    onClick={() => togglePackageExpand(pkg._id)}
+                                    className="text-gray-400 hover:text-white transition-colors mt-1"
+                                    title={
+                                      expandedPackages.has(pkg._id)
+                                        ? "Collapse"
+                                        : "Expand"
                                     }
-                                  }
-                                }}
-                                className="px-2 py-1 rounded text-xs font-semibold bg-orange-600/20 text-orange-400 hover:bg-orange-600/30 transition-colors"
-                              >
-                                Expire (Test)
-                              </button>
+                                  >
+                                    {expandedPackages.has(pkg._id) ? (
+                                      <ChevronDown className="w-5 h-5" />
+                                    ) : (
+                                      <ChevronRight className="w-5 h-5" />
+                                    )}
+                                  </button>
+                                  <div className="flex-1">
+                                    <p className="text-white font-semibold">
+                                      {pkg.packageName}
+                                    </p>
+                                    <p className="text-gray-400 text-sm">
+                                      {pkg.packageType}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex gap-2 flex-wrap justify-end">
+                                {pkg.isPrimary && (
+                                  <span className="px-2 py-1 rounded text-xs font-semibold bg-yellow-600/20 text-yellow-400 whitespace-nowrap">
+                                    Primary
+                                  </span>
+                                )}
+                                <span
+                                  className={`px-2 py-1 rounded text-xs font-semibold whitespace-nowrap ${
+                                    pkg.paymentStatus === "Paid"
+                                      ? "bg-green-600/20 text-green-400"
+                                      : "bg-yellow-600/20 text-yellow-400"
+                                  }`}
+                                >
+                                  {pkg.paymentStatus}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Summary Row - Always Visible */}
+                            <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-gray-600">
+                              <div>
+                                <p className="text-gray-400 text-xs mb-1">
+                                  Final Amount
+                                </p>
+                                <p className="text-white font-bold text-lg">
+                                  ₹{pkg.finalAmount}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-gray-400 text-xs mb-1">
+                                  Paid
+                                </p>
+                                <p className="text-green-400 font-bold text-lg">
+                                  ₹{pkg.totalPaid || 0}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-gray-400 text-xs mb-1">
+                                  Due
+                                </p>
+                                <p className="text-orange-400 font-bold text-lg">
+                                  ₹{pkg.totalPending || 0}
+                                </p>
+                              </div>
                             </div>
                           </div>
-                          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
-                            <div>
-                              <p className="text-gray-400">Amount</p>
-                              <p className="text-white">₹{pkg.finalAmount}</p>
+
+                          {/* Expanded Details */}
+                          {expandedPackages.has(pkg._id) && (
+                            <div className="bg-gray-600/30 border-t border-gray-600 p-4 space-y-4">
+                              {/* Financial Details */}
+                              <div>
+                                <h4 className="text-sm font-semibold text-gray-300 mb-3">
+                                  Financial Details
+                                </h4>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                  <div className="bg-gray-700/50 rounded p-3">
+                                    <p className="text-gray-400 text-xs mb-1">
+                                      Original Amount
+                                    </p>
+                                    <p className="text-white font-semibold">
+                                      ₹{pkg.amount}
+                                    </p>
+                                  </div>
+                                  <div className="bg-gray-700/50 rounded p-3">
+                                    <p className="text-gray-400 text-xs mb-1">
+                                      Discount{" "}
+                                      {pkg.discountType === "percentage"
+                                        ? "(%)"
+                                        : ""}
+                                    </p>
+                                    <p className="text-red-400 font-semibold">
+                                      {pkg.discountType === "percentage"
+                                        ? `${pkg.discount.toFixed(2)}%`
+                                        : `₹${pkg.discount}`}
+                                    </p>
+                                  </div>
+                                  <div className="bg-gray-700/50 rounded p-3">
+                                    <p className="text-gray-400 text-xs mb-1">
+                                      Paid Amount
+                                    </p>
+                                    <p className="text-green-400 font-semibold">
+                                      ₹{pkg.totalPaid || 0}
+                                    </p>
+                                  </div>
+                                  <div className="bg-gray-700/50 rounded p-3">
+                                    <p className="text-gray-400 text-xs mb-1">
+                                      Due Amount
+                                    </p>
+                                    <p className="text-orange-400 font-semibold">
+                                      ₹{pkg.totalPending || 0}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Dates */}
+                              <div>
+                                <h4 className="text-sm font-semibold text-gray-300 mb-3">
+                                  Package Dates
+                                </h4>
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                  <div className="bg-gray-700/50 rounded p-3">
+                                    <p className="text-gray-400 text-xs mb-1">
+                                      Start Date
+                                    </p>
+                                    <div className="flex items-center justify-between">
+                                      <p className="text-white font-semibold">
+                                        {formatDateForDisplay(pkg.startDate)}
+                                      </p>
+                                      <button
+                                        onClick={() =>
+                                          handleOpenEditStartDateModal(
+                                            pkg._id,
+                                            pkg.packageName,
+                                            pkg.startDate
+                                          )
+                                        }
+                                        className="text-blue-400 hover:text-blue-300 transition-colors ml-2"
+                                        title="Edit start date"
+                                      >
+                                        <Edit className="w-4 h-4" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                  <div className="bg-gray-700/50 rounded p-3">
+                                    <p className="text-gray-400 text-xs mb-1">
+                                      End Date
+                                    </p>
+                                    <p className="text-white font-semibold">
+                                      {formatDateForDisplay(pkg.endDate)}
+                                    </p>
+                                  </div>
+                                  <div className="bg-gray-700/50 rounded p-3">
+                                    <p className="text-gray-400 text-xs mb-1">
+                                      Last Payment
+                                    </p>
+                                    <p className="text-white font-semibold">
+                                      {pkg.paymentDate
+                                        ? formatDateForDisplay(pkg.paymentDate)
+                                        : "N/A"}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Actions */}
+                              <div className="pt-3 border-t border-gray-600">
+                                <button
+                                  onClick={async () => {
+                                    if (
+                                      window.confirm(
+                                        "Mark this package as Expired? (For testing)"
+                                      )
+                                    ) {
+                                      try {
+                                        const response = await fetch(
+                                          `${
+                                            import.meta.env.VITE_API_BASE_URL ||
+                                            "http://localhost:3000"
+                                          }/api/admin/members/${
+                                            selectedMember._id
+                                          }/expire-package/${pkg._id}`,
+                                          {
+                                            method: "PATCH",
+                                            credentials: "include",
+                                            headers: {
+                                              "Content-Type":
+                                                "application/json",
+                                            },
+                                          }
+                                        );
+                                        const data = await response.json();
+                                        if (data.success) {
+                                          toast.success(
+                                            "Package marked as expired"
+                                          );
+                                          dispatch(
+                                            fetchMemberById(selectedMember._id)
+                                          );
+                                        } else {
+                                          toast.error(
+                                            data.error ||
+                                              "Failed to expire package"
+                                          );
+                                        }
+                                      } catch (error) {
+                                        toast.error("Failed to expire package");
+                                      }
+                                    }
+                                  }}
+                                  className="px-3 py-2 rounded text-xs font-semibold bg-orange-600/20 text-orange-400 hover:bg-orange-600/30 transition-colors"
+                                >
+                                  Expire (Test)
+                                </button>
+                              </div>
                             </div>
-                            <div>
-                              <p className="text-gray-400">Payment</p>
-                              <span
-                                className={`px-2 py-1 rounded text-xs ${
-                                  pkg.paymentStatus === "Paid"
-                                    ? "bg-green-600/20 text-green-400"
-                                    : "bg-yellow-600/20 text-yellow-400"
-                                }`}
-                              >
-                                {pkg.paymentStatus}
-                              </span>
-                            </div>
-                            <div>
-                              <p className="text-gray-400">Start Date</p>
-                              <p className="text-white">
-                                {formatDateForDisplay(pkg.startDate)}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-gray-400">End Date</p>
-                              <p className="text-white">
-                                {formatDateForDisplay(pkg.endDate)}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-gray-400">Last Payment</p>
-                              <p className="text-white">
-                                {pkg.paymentDate
-                                  ? formatDateForDisplay(pkg.paymentDate)
-                                  : "N/A"}
-                              </p>
-                            </div>
-                          </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -2376,6 +2591,76 @@ const Addmember = () => {
                   className="flex-1 px-6 py-3 bg-gray-700 text-white rounded-lg font-semibold hover:bg-gray-600 transition-colors"
                 >
                   Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Package Start Date Modal */}
+      {isEditStartDateModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm border border-gray-700 overflow-hidden">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-bold text-white">
+                    Edit Start Date
+                  </h3>
+                  <p className="text-blue-100 text-sm mt-1">
+                    {editingPackageName}
+                  </p>
+                </div>
+                <button
+                  onClick={handleCloseEditStartDateModal}
+                  className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                >
+                  <X className="w-6 h-6 text-white" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-300 mb-2">
+                  New Start Date
+                </label>
+                <input
+                  type="date"
+                  value={newStartDate}
+                  onChange={(e) => setNewStartDate(e.target.value)}
+                  className="w-full px-4 py-3 rounded-lg bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 pt-4">
+                <button
+                  onClick={handleUpdatePackageStartDate}
+                  disabled={isUpdatingStartDate}
+                  className="flex-1 px-4 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg font-semibold hover:shadow-lg hover:shadow-green-500/50 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isUpdatingStartDate ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="w-5 h-5" />
+                      Save
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={handleCloseEditStartDateModal}
+                  disabled={isUpdatingStartDate}
+                  className="flex-1 px-4 py-3 bg-gray-700 text-white rounded-lg font-semibold hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Cancel
                 </button>
               </div>
             </div>

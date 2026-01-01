@@ -526,54 +526,48 @@ const bulkImportMembers = async (req, res) => {
           packageDoc.duration.unit
         );
 
-        // Get full package price
-        const packagePrice =
-          packageDoc.discountedPrice || packageDoc.originalPrice;
+        // Get original package price (not discounted price)
+        const packagePrice = packageDoc.originalPrice;
 
         // Parse and calculate financial fields
-        // 1. Determine discount amount (handle percentage to flat conversion)
+        // Admin provides discount in flat amount in Excel
+        // We need to store it in the format matching package's discount type
         let discountAmount = 0;
+        let discountValue = 0; // This will be stored based on package's discount type
+        let discountTypeToStore = packageDoc.discountType || "flat";
+
         const discountNumeric = parseFloat(discountRaw) || 0;
 
         if (discountNumeric > 0) {
-          // If discount looks like percentage and package uses percentage discount
-          if (
-            discountNumeric < 100 &&
-            packageDoc.discountedPrice &&
-            packageDoc.originalPrice &&
-            packageDoc.discountedPrice < packageDoc.originalPrice
-          ) {
-            // Calculate if this is percentage or flat
-            // If discountNumeric is small (< 100), check if it should be treated as percentage
-            const percentDiscount =
-              ((packageDoc.originalPrice - packageDoc.discountedPrice) /
-                packageDoc.originalPrice) *
-              100;
-            if (Math.abs(discountNumeric - percentDiscount) < 5) {
-              // It's a percentage, convert to flat
-              discountAmount = (discountNumeric / 100) * packagePrice;
-            } else {
-              // It's already a flat amount
-              discountAmount = discountNumeric;
-            }
+          // Admin gives discount in flat amount (e.g., 2000)
+          discountAmount = discountNumeric;
+
+          // Convert to package's discount type
+          if (discountTypeToStore === "percentage") {
+            // Convert flat amount to percentage
+            // e.g., 2000 discount on 9000 = (2000/9000) * 100 = 22.22%
+            discountValue = (discountAmount / packagePrice) * 100;
           } else {
-            // Treat as flat amount
-            discountAmount = discountNumeric;
+            // Keep as flat amount
+            discountValue = discountAmount;
           }
         }
 
         // 2. Parse paid amount (amount received after discount)
         const paidAmount = parseFloat(paidAmountRaw) || 0;
 
-        // 3. Calculate due amount
-        // Due = Package Price - Discount - Paid Amount
+        // 3. Calculate final amount and due amount
+        // Final Amount = Original Price - Discount
+        const finalAmount = packagePrice - discountAmount;
+
+        // Due = Final Amount - Paid Amount
         let dueAmount = 0;
         if (dueRaw && !isNaN(parseFloat(dueRaw))) {
           // If due is explicitly provided, use it
           dueAmount = parseFloat(dueRaw);
         } else {
           // Calculate due amount
-          dueAmount = Math.max(0, packagePrice - discountAmount - paidAmount);
+          dueAmount = Math.max(0, finalAmount - paidAmount);
         }
 
         // 4. Determine payment status
@@ -597,7 +591,6 @@ const bulkImportMembers = async (req, res) => {
             ? paymentMode.trim()
             : "Cash";
 
-        const finalAmount = packagePrice;
         const totalPaid = paidAmount;
         const totalPending = dueAmount;
 
@@ -640,8 +633,8 @@ const bulkImportMembers = async (req, res) => {
             startDate: packageStartDate,
             endDate: packageEndDate,
             amount: packagePrice,
-            discount: discountAmount,
-            discountType: "flat",
+            discount: discountValue,
+            discountType: discountTypeToStore,
             finalAmount,
             totalPaid,
             totalPending,
@@ -656,6 +649,11 @@ const bulkImportMembers = async (req, res) => {
           };
 
           existingMember.packages.push(newPackage);
+
+          // Update email if provided and not already set
+          if (emailId && emailId.trim() !== "" && !existingMember.email) {
+            existingMember.email = emailId.trim().toLowerCase();
+          }
 
           // Update trainer if provided
           if (trainerDetails) {
@@ -694,6 +692,10 @@ const bulkImportMembers = async (req, res) => {
           const newMemberData = {
             registrationNumber: genRegistrationNumber,
             fullName: fullName.trim(),
+            email:
+              emailId && emailId.trim() !== ""
+                ? emailId.trim().toLowerCase()
+                : undefined,
             phoneNumber: phone.trim(),
             alternatePhone: "",
             gender: "Prefer not to say",
@@ -708,8 +710,8 @@ const bulkImportMembers = async (req, res) => {
                 startDate: packageStartDate,
                 endDate: packageEndDate,
                 amount: packagePrice,
-                discount: discountAmount,
-                discountType: "flat",
+                discount: discountValue,
+                discountType: discountTypeToStore,
                 finalAmount,
                 totalPaid,
                 totalPending,

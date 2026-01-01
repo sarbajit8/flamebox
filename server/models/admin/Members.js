@@ -414,31 +414,34 @@ memberSchema.pre("save", async function (next) {
     // Update lastUpdatedDate on every save (for new and existing documents)
     this.lastUpdatedDate = new Date();
 
-    // Auto-update memberStatus based on active packages
-    const now = new Date();
-    const hasActivePackage =
-      this.packages &&
-      this.packages.some((pkg) => {
-        // Check if package is active (not expired and status is Active)
-        return (
-          pkg.packageStatus === "Active" &&
-          pkg.endDate &&
-          new Date(pkg.endDate) >= now
-        );
-      });
+    // Skip automatic status update if member is being deleted
+    if (!this.isDeleted) {
+      // Auto-update memberStatus based on active packages
+      const now = new Date();
+      const hasActivePackage =
+        this.packages &&
+        this.packages.some((pkg) => {
+          // Check if package is active (not expired and status is Active)
+          return (
+            pkg.packageStatus === "Active" &&
+            pkg.endDate &&
+            new Date(pkg.endDate) >= now
+          );
+        });
 
-    // Update member status
-    if (hasActivePackage) {
-      this.memberStatus = "Active";
-    } else if (this.packages && this.packages.length > 0) {
-      // Has packages but all are expired/inactive
-      const hasExpiredPackage = this.packages.some((pkg) => {
-        return pkg.endDate && new Date(pkg.endDate) < now;
-      });
-      this.memberStatus = hasExpiredPackage ? "Expired" : "Inactive";
-    } else {
-      // No packages at all
-      this.memberStatus = "Inactive";
+      // Update member status
+      if (hasActivePackage) {
+        this.memberStatus = "Active";
+      } else if (this.packages && this.packages.length > 0) {
+        // Has packages but all are expired/inactive
+        const hasExpiredPackage = this.packages.some((pkg) => {
+          return pkg.endDate && new Date(pkg.endDate) < now;
+        });
+        this.memberStatus = hasExpiredPackage ? "Expired" : "Inactive";
+      } else {
+        // No packages at all
+        this.memberStatus = "Inactive";
+      }
     }
 
     // Only generate registration number for new documents

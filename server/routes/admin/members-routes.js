@@ -173,6 +173,14 @@ router.patch(
   membersController.updatePackageStatus
 );
 
+// Update package start date (admin only)
+// Body: { startDate: "YYYY-MM-DD" }
+router.patch(
+  "/:id/packages/:packageId/start-date",
+  requireAdmin,
+  membersController.updatePackageStartDate
+);
+
 // ============================================
 // PAYMENT OPERATIONS
 // ============================================

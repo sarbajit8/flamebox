@@ -700,6 +700,111 @@ const updatePackageStatus = async (req, res) => {
 };
 
 // ============================================
+// UPDATE PACKAGE START DATE
+// ============================================
+const updatePackageStartDate = async (req, res) => {
+  try {
+    const { id, packageId } = req.params;
+    const { startDate } = req.body;
+
+    console.log(
+      `📅 Updating package start date for member ID: ${id}, package ID: ${packageId}, new date: ${startDate}`
+    );
+
+    if (!startDate) {
+      return res.status(400).json({
+        success: false,
+        error: "Start date is required",
+      });
+    }
+
+    const newStartDate = new Date(startDate);
+    if (isNaN(newStartDate.getTime())) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid date format",
+      });
+    }
+
+    const member = await Member.findOne({ _id: id, isDeleted: false });
+
+    if (!member) {
+      return res.status(404).json({
+        success: false,
+        error: "Member not found",
+      });
+    }
+
+    // Find the package
+    const packageIndex = member.packages.findIndex(
+      (pkg) => pkg._id.toString() === packageId
+    );
+
+    if (packageIndex === -1) {
+      return res.status(404).json({
+        success: false,
+        error: "Package not found",
+      });
+    }
+
+    const oldStartDate = member.packages[packageIndex].startDate;
+
+    // Update start date
+    member.packages[packageIndex].startDate = newStartDate;
+
+    // Recalculate end date based on package duration
+    const pkg = member.packages[packageIndex];
+    const packageDuration = await Package.findById(pkg.packageId);
+
+    if (packageDuration) {
+      const endDate = new Date(newStartDate);
+      switch (packageDuration.duration.unit) {
+        case "Days":
+          endDate.setDate(endDate.getDate() + packageDuration.duration.value);
+          break;
+        case "Weeks":
+          endDate.setDate(
+            endDate.getDate() + packageDuration.duration.value * 7
+          );
+          break;
+        case "Months":
+          endDate.setMonth(endDate.getMonth() + packageDuration.duration.value);
+          break;
+        case "Years":
+          endDate.setFullYear(
+            endDate.getFullYear() + packageDuration.duration.value
+          );
+          break;
+        default:
+          endDate.setMonth(endDate.getMonth() + packageDuration.duration.value);
+      }
+      member.packages[packageIndex].endDate = endDate;
+    }
+
+    // Update payment date if needed
+    member.packages[packageIndex].paymentDate = newStartDate;
+
+    await member.save();
+
+    console.log(
+      `✅ Package start date updated from ${oldStartDate} to ${newStartDate}`
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Package start date updated successfully",
+      member,
+    });
+  } catch (error) {
+    console.error("❌ Error updating package start date:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || "Failed to update package start date",
+    });
+  }
+};
+
+// ============================================
 // ADD PAYMENT
 // ============================================
 const addPayment = async (req, res) => {
@@ -2116,6 +2221,7 @@ module.exports = {
   updateMember,
   addPackageToMember,
   updatePackageStatus,
+  updatePackageStartDate,
   addPayment,
   recordAttendance,
   deleteMember,
