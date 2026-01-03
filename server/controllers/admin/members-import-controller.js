@@ -166,11 +166,14 @@ const validateBulkMembers = async (req, res) => {
     const invalidMembers = [];
 
     // Fetch all packages and trainers once
-    const allPackages = await Package.find({ isActive: true });
+    const allPackages = await Package.find({}); // Fetch all packages, including inactive
     const allTrainers = await User.find({
       role: "trainer",
       isActive: true,
     }).select("_id fullName email phoneNumber");
+
+    console.log(`📦 Found ${allPackages.length} total packages in database`);
+    console.log(`👤 Found ${allTrainers.length} active trainers`);
 
     for (let i = 0; i < members.length; i++) {
       const memberData = members[i];
@@ -262,12 +265,24 @@ const validateBulkMembers = async (req, res) => {
           }
 
           if (!packageDoc) {
+            // Log for debugging
+            console.log(
+              `❌ Package not found: "${packageName}" (cleaned: "${cleanPackageName}")`
+            );
+            console.log(
+              `Available packages: ${allPackages
+                .map((p) => `"${p.packageName}"`)
+                .join(", ")}`
+            );
+
             const availableNames = allPackages
-              .slice(0, 3)
+              .slice(0, 5)
               .map((p) => p.packageName)
               .join(", ");
             errors.push(
-              `Package "${packageName}" not found. Available: ${availableNames}...`
+              `Package "${packageName}" not found. Check spelling/spacing. Available: ${availableNames}${
+                allPackages.length > 5 ? "..." : ""
+              }`
             );
           }
         }
